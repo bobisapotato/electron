@@ -209,9 +209,9 @@ bool Converter<blink::WebKeyboardEvent>::FromV8(v8::Isolate* isolate,
     size_t text_length_cap = blink::WebKeyboardEvent::kTextLengthCap;
     base::string16 text16 = base::UTF8ToUTF16(str);
 
-    memset(out->text, 0, text_length_cap);
-    memset(out->unmodified_text, 0, text_length_cap);
-    for (size_t i = 0; i < std::min(text_length_cap, text16.size()); ++i) {
+    std::fill_n(out->text, text_length_cap, 0);
+    std::fill_n(out->unmodified_text, text_length_cap, 0);
+    for (size_t i = 0; i < std::min(text_length_cap - 1, text16.size()); ++i) {
       out->text[i] = text16[i];
       out->unmodified_text[i] = text16[i];
     }
@@ -347,15 +347,16 @@ v8::Local<v8::Value> Converter<blink::mojom::ContextMenuDataMediaType>::ToV8(
 }
 
 // static
-v8::Local<v8::Value> Converter<blink::ContextMenuDataInputFieldType>::ToV8(
+v8::Local<v8::Value>
+Converter<blink::mojom::ContextMenuDataInputFieldType>::ToV8(
     v8::Isolate* isolate,
-    const blink::ContextMenuDataInputFieldType& in) {
+    const blink::mojom::ContextMenuDataInputFieldType& in) {
   switch (in) {
-    case blink::ContextMenuDataInputFieldType::kPlainText:
+    case blink::mojom::ContextMenuDataInputFieldType::kPlainText:
       return StringToV8(isolate, "plainText");
-    case blink::ContextMenuDataInputFieldType::kPassword:
+    case blink::mojom::ContextMenuDataInputFieldType::kPassword:
       return StringToV8(isolate, "password");
-    case blink::ContextMenuDataInputFieldType::kOther:
+    case blink::mojom::ContextMenuDataInputFieldType::kOther:
       return StringToV8(isolate, "other");
     default:
       return StringToV8(isolate, "none");
@@ -393,31 +394,24 @@ v8::Local<v8::Value> EditFlagsToV8(v8::Isolate* isolate, int editFlags) {
 
 v8::Local<v8::Value> MediaFlagsToV8(v8::Isolate* isolate, int mediaFlags) {
   gin_helper::Dictionary dict = gin::Dictionary::CreateEmpty(isolate);
-  dict.Set("inError",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaInError));
-  dict.Set("isPaused",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaPaused));
-  dict.Set("isMuted", !!(mediaFlags & blink::WebContextMenuData::kMediaMuted));
-  dict.Set("canSave",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaCanSave));
-  dict.Set("hasAudio",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaHasAudio));
-  dict.Set("isLooping", !!(mediaFlags & blink::WebContextMenuData::kMediaLoop));
+  dict.Set("inError", !!(mediaFlags & blink::ContextMenuData::kMediaInError));
+  dict.Set("isPaused", !!(mediaFlags & blink::ContextMenuData::kMediaPaused));
+  dict.Set("isMuted", !!(mediaFlags & blink::ContextMenuData::kMediaMuted));
+  dict.Set("canSave", !!(mediaFlags & blink::ContextMenuData::kMediaCanSave));
+  dict.Set("hasAudio", !!(mediaFlags & blink::ContextMenuData::kMediaHasAudio));
+  dict.Set("isLooping", !!(mediaFlags & blink::ContextMenuData::kMediaLoop));
   dict.Set("isControlsVisible",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaControls));
+           !!(mediaFlags & blink::ContextMenuData::kMediaControls));
   dict.Set("canToggleControls",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaCanToggleControls));
-  dict.Set("canPrint",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaCanPrint));
+           !!(mediaFlags & blink::ContextMenuData::kMediaCanToggleControls));
+  dict.Set("canPrint", !!(mediaFlags & blink::ContextMenuData::kMediaCanPrint));
   dict.Set("canRotate",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaCanRotate));
-  dict.Set(
-      "canShowPictureInPicture",
-      !!(mediaFlags & blink::WebContextMenuData::kMediaCanPictureInPicture));
+           !!(mediaFlags & blink::ContextMenuData::kMediaCanRotate));
+  dict.Set("canShowPictureInPicture",
+           !!(mediaFlags & blink::ContextMenuData::kMediaCanPictureInPicture));
   dict.Set("isShowingPictureInPicture",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaPictureInPicture));
-  dict.Set("canLoop",
-           !!(mediaFlags & blink::WebContextMenuData::kMediaCanLoop));
+           !!(mediaFlags & blink::ContextMenuData::kMediaPictureInPicture));
+  dict.Set("canLoop", !!(mediaFlags & blink::ContextMenuData::kMediaCanLoop));
   return ConvertToV8(isolate, dict);
 }
 

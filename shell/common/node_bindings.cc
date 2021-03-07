@@ -302,7 +302,7 @@ base::FilePath GetResourcesPath() {
 }  // namespace
 
 NodeBindings::NodeBindings(BrowserEnvironment browser_env)
-    : browser_env_(browser_env), weak_factory_(this) {
+    : browser_env_(browser_env) {
   if (browser_env == BrowserEnvironment::kWorker) {
     uv_loop_init(&worker_loop_);
     uv_loop_ = &worker_loop_;
@@ -531,6 +531,18 @@ void NodeBindings::LoadEnvironment(node::Environment* env) {
 }
 
 void NodeBindings::PrepareMessageLoop() {
+#if !defined(OS_WIN)
+  int handle = uv_backend_fd(uv_loop_);
+#else
+  HANDLE handle = uv_loop_->iocp;
+#endif
+
+  // If the backend fd hasn't changed, don't proceed.
+  if (handle == handle_)
+    return;
+
+  handle_ = handle;
+
   // Add dummy handle for libuv, otherwise libuv would quit when there is
   // nothing to do.
   uv_async_init(uv_loop_, dummy_uv_handle_.get(), nullptr);

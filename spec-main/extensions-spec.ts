@@ -107,6 +107,12 @@ describe('chrome extensions', () => {
     expect(bg).to.equal('red');
   });
 
+  it('does not crash when failing to load an extension', async () => {
+    const customSession = session.fromPartition(`persist:${uuid.v4()}`);
+    const promise = customSession.loadExtension(path.join(fixtures, 'extensions', 'load-error'));
+    await expect(promise).to.eventually.be.rejected();
+  });
+
   it('serializes a loaded extension', async () => {
     const extensionPath = path.join(fixtures, 'extensions', 'red-bg');
     const manifest = JSON.parse(fs.readFileSync(path.join(extensionPath, 'manifest.json'), 'utf-8'));
@@ -146,13 +152,13 @@ describe('chrome extensions', () => {
     const [, loadedExtension] = await loadedPromise;
     const [, readyExtension] = await emittedOnce(customSession, 'extension-ready');
 
-    expect(loadedExtension.id).to.equal(extension.id);
-    expect(readyExtension.id).to.equal(extension.id);
+    expect(loadedExtension).to.deep.equal(extension);
+    expect(readyExtension).to.deep.equal(extension);
 
     const unloadedPromise = emittedOnce(customSession, 'extension-unloaded');
     await customSession.removeExtension(extension.id);
     const [, unloadedExtension] = await unloadedPromise;
-    expect(unloadedExtension.id).to.equal(extension.id);
+    expect(unloadedExtension).to.deep.equal(extension);
   });
 
   it('lists loaded extensions in getAllExtensions', async () => {
@@ -195,7 +201,7 @@ describe('chrome extensions', () => {
     beforeEach(async () => {
       const customSession = session.fromPartition(`persist:${uuid.v4()}`);
       extension = await customSession.loadExtension(path.join(fixtures, 'extensions', 'chrome-i18n'));
-      w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true } });
+      w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true, contextIsolation: false } });
       await w.loadURL(url);
     });
     it('getAcceptLanguages()', async () => {
@@ -220,7 +226,7 @@ describe('chrome extensions', () => {
     beforeEach(async () => {
       const customSession = session.fromPartition(`persist:${uuid.v4()}`);
       await customSession.loadExtension(path.join(fixtures, 'extensions', 'chrome-runtime'));
-      w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true } });
+      w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true, contextIsolation: false } });
       await w.loadURL(url);
     });
     it('getManifest()', async () => {
@@ -248,7 +254,7 @@ describe('chrome extensions', () => {
     it('stores and retrieves a key', async () => {
       const customSession = session.fromPartition(`persist:${uuid.v4()}`);
       await customSession.loadExtension(path.join(fixtures, 'extensions', 'chrome-storage'));
-      const w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true } });
+      const w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true, contextIsolation: false } });
       try {
         const p = emittedOnce(ipcMain, 'storage-success');
         await w.loadURL(url);
@@ -277,12 +283,12 @@ describe('chrome extensions', () => {
       it('can cancel http requests', async () => {
         await w.loadURL(url);
         await customSession.loadExtension(path.join(fixtures, 'extensions', 'chrome-webRequest'));
-        await expect(fetch(w.webContents, url)).to.eventually.be.rejectedWith(TypeError);
+        await expect(fetch(w.webContents, url)).to.eventually.be.rejectedWith('Failed to fetch');
       });
 
       it('does not cancel http requests when no extension loaded', async () => {
         await w.loadURL(url);
-        await expect(fetch(w.webContents, url)).to.not.be.rejectedWith(TypeError);
+        await expect(fetch(w.webContents, url)).to.not.be.rejectedWith('Failed to fetch');
       });
     });
 
@@ -379,7 +385,7 @@ describe('chrome extensions', () => {
     it('loads a lazy background page when sending a message', async () => {
       const customSession = session.fromPartition(`persist:${uuid.v4()}`);
       await customSession.loadExtension(path.join(fixtures, 'extensions', 'lazy-background-page'));
-      const w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true } });
+      const w = new BrowserWindow({ show: false, webPreferences: { session: customSession, nodeIntegration: true, contextIsolation: false } });
       try {
         w.loadURL(url);
         const [, resp] = await emittedOnce(ipcMain, 'bg-page-message-response');
@@ -459,7 +465,8 @@ describe('chrome extensions', () => {
           const showLastPanel = () => {
             // this is executed in the devtools context, where UI is a global
             const { UI } = (window as any);
-            const lastPanelId = UI.inspectorView._tabbedPane._tabs.peekLast().id;
+            const tabs = UI.inspectorView._tabbedPane._tabs;
+            const lastPanelId = tabs[tabs.length - 1].id;
             UI.inspectorView.showPanel(lastPanelId);
           };
           devToolsWebContents.executeJavaScript(`(${showLastPanel})()`, false).then(() => {
@@ -474,7 +481,7 @@ describe('chrome extensions', () => {
       const customSession = session.fromPartition(`persist:${uuid.v4()}`);
       customSession.loadExtension(path.join(fixtures, 'extensions', 'devtools-extension'));
       const winningMessage = emittedOnce(ipcMain, 'winning');
-      const w = new BrowserWindow({ show: true, webPreferences: { session: customSession, nodeIntegration: true } });
+      const w = new BrowserWindow({ show: true, webPreferences: { session: customSession, nodeIntegration: true, contextIsolation: false } });
       await w.loadURL(url);
       w.webContents.openDevTools();
       showLastDevToolsPanel(w);
@@ -647,6 +654,18 @@ describe('chrome extensions', () => {
       await w.loadURL(`chrome-extension://${id}/page-script-load.html`);
       const textContent = await w.webContents.executeJavaScript('document.body.textContent');
       expect(textContent).to.equal('script loaded ok\n');
+    });
+  });
+
+  describe('manifest v3', () => {
+    it('registers background service worker', async () => {
+      const customSession = session.fromPartition(`persist:${uuid.v4()}`);
+      const registrationPromise = new Promise<string>(resolve => {
+        customSession.serviceWorkers.once('registration-completed', (event, { scope }) => resolve(scope));
+      });
+      const extension = await customSession.loadExtension(path.join(fixtures, 'extensions', 'mv3-service-worker'));
+      const scope = await registrationPromise;
+      expect(scope).equals(extension.url);
     });
   });
 });

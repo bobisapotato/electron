@@ -126,11 +126,12 @@ describe('webFrameMain module', () => {
       const w = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true } });
       await w.loadFile(path.join(subframesPath, 'frame.html'));
       const webFrame = w.webContents.mainFrame;
-      expect(webFrame).to.haveOwnProperty('frameTreeNodeId');
-      expect(webFrame).to.haveOwnProperty('name');
-      expect(webFrame).to.haveOwnProperty('osProcessId');
-      expect(webFrame).to.haveOwnProperty('processId');
-      expect(webFrame).to.haveOwnProperty('routingId');
+      expect(webFrame).to.have.ownProperty('url').that.is.a('string');
+      expect(webFrame).to.have.ownProperty('frameTreeNodeId').that.is.a('number');
+      expect(webFrame).to.have.ownProperty('name').that.is.a('string');
+      expect(webFrame).to.have.ownProperty('osProcessId').that.is.a('number');
+      expect(webFrame).to.have.ownProperty('processId').that.is.a('number');
+      expect(webFrame).to.have.ownProperty('routingId').that.is.a('number');
     });
   });
 
@@ -141,19 +142,6 @@ describe('webFrameMain module', () => {
       const webFrame = w.webContents.mainFrame;
 
       const getUrl = (frame: WebFrameMain) => frame.executeJavaScript('location.href');
-      expect(await getUrl(webFrame)).to.equal(fileUrl('frame-with-frame-container.html'));
-      expect(await getUrl(webFrame.frames[0])).to.equal(fileUrl('frame-with-frame.html'));
-      expect(await getUrl(webFrame.frames[0].frames[0])).to.equal(fileUrl('frame.html'));
-    });
-  });
-
-  describe('WebFrame.executeJavaScriptInIsolatedWorld', () => {
-    it('can inject code into any subframe', async () => {
-      const w = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true } });
-      await w.loadFile(path.join(subframesPath, 'frame-with-frame-container.html'));
-      const webFrame = w.webContents.mainFrame;
-
-      const getUrl = (frame: WebFrameMain) => frame.executeJavaScriptInIsolatedWorld(999, 'location.href');
       expect(await getUrl(webFrame)).to.equal(fileUrl('frame-with-frame-container.html'));
       expect(await getUrl(webFrame.frames[0])).to.equal(fileUrl('frame-with-frame.html'));
       expect(await getUrl(webFrame.frames[0].frames[0])).to.equal(fileUrl('frame.html'));

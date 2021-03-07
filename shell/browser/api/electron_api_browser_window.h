@@ -48,7 +48,7 @@ class BrowserWindow : public BaseWindow,
   // content::WebContentsObserver:
   void RenderViewHostChanged(content::RenderViewHost* old_host,
                              content::RenderViewHost* new_host) override;
-  void RenderViewCreated(content::RenderViewHost* render_view_host) override;
+  void RenderFrameCreated(content::RenderFrameHost* render_frame_host) override;
   void DidFirstVisuallyNonEmptyPaint() override;
   void BeforeUnloadDialogCancelled() override;
   void OnRendererUnresponsive(content::RenderProcessHost*) override;
@@ -84,6 +84,8 @@ class BrowserWindow : public BaseWindow,
   void SetBrowserView(v8::Local<v8::Value> value) override;
   void AddBrowserView(v8::Local<v8::Value> value) override;
   void RemoveBrowserView(v8::Local<v8::Value> value) override;
+  void SetTopBrowserView(v8::Local<v8::Value> value,
+                         gin_helper::Arguments* args) override;
   void ResetBrowserViews() override;
   void SetVibrancy(v8::Isolate* isolate, v8::Local<v8::Value> value) override;
   void OnWindowShow() override;
@@ -126,7 +128,7 @@ class BrowserWindow : public BaseWindow,
   v8::Global<v8::Value> web_contents_;
   base::WeakPtr<api::WebContents> api_web_contents_;
 
-  base::WeakPtrFactory<BrowserWindow> weak_factory_;
+  base::WeakPtrFactory<BrowserWindow> weak_factory_{this};
 
   DISALLOW_COPY_AND_ASSIGN(BrowserWindow);
 };

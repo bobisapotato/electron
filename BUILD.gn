@@ -402,7 +402,10 @@ source_set("electron_lib") {
   }
 
   if (!is_mas_build) {
-    deps += [ "//components/crash/core/app" ]
+    deps += [
+      "//components/crash/core/app",
+      "//components/crash/core/browser",
+    ]
   }
 
   sources = filenames.lib_sources
@@ -632,6 +635,7 @@ source_set("electron_lib") {
       "//components/zoom",
       "//extensions/browser",
       "//extensions/browser:core_api_provider",
+      "//extensions/browser/updater",
       "//extensions/common",
       "//extensions/common:core_api_provider",
       "//extensions/renderer",
@@ -648,6 +652,7 @@ source_set("electron_lib") {
   }
   if (enable_pdf_viewer) {
     deps += [
+      "//chrome/browser/resources/pdf:resources",
       "//components/pdf/browser",
       "//components/pdf/renderer",
       "//pdf:pdf_ppapi",
@@ -991,6 +996,9 @@ if (is_mac) {
     deps = [
       ":electron_app_framework_bundle_data",
       ":electron_app_resources",
+      ":electron_fuses",
+      "//base",
+      "//electron/buildflags",
     ]
     if (is_mas_build) {
       deps += [ ":electron_login_helper_app" ]

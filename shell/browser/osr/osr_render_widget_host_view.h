@@ -149,6 +149,7 @@ class OffScreenRenderWidgetHostView : public content::RenderWidgetHostViewBase,
       gfx::PointF* transformed_point) override;
 
   // ui::CompositorDelegate:
+  bool IsOffscreen() const override;
   std::unique_ptr<viz::HostDisplayClient> CreateHostDisplayClient(
       ui::Compositor* compositor) override;
 
@@ -280,7 +281,7 @@ class OffScreenRenderWidgetHostView : public content::RenderWidgetHostViewBase,
 
   std::unique_ptr<SkBitmap> backing_;
 
-  base::WeakPtrFactory<OffScreenRenderWidgetHostView> weak_ptr_factory_;
+  base::WeakPtrFactory<OffScreenRenderWidgetHostView> weak_ptr_factory_{this};
 
   DISALLOW_COPY_AND_ASSIGN(OffScreenRenderWidgetHostView);
 };

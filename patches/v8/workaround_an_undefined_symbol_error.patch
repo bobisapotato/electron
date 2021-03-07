@@ -12,10 +12,10 @@ By moving some functions out of the the arm64-assembler header file,
 this error no longer seems to happen.
 
 diff --git a/src/codegen/arm64/assembler-arm64.cc b/src/codegen/arm64/assembler-arm64.cc
-index 335419ebf5c810d990e072176d07bbe3e9934a7f..df2cd1c0a3c29d5fcd1398ead8903daf9208fb5e 100644
+index 441f299a17a6f870f545dbcd2c28a5e49b952ac3..79249d463c8fe7d73caca6b36ed6033b3c363c67 100644
 --- a/src/codegen/arm64/assembler-arm64.cc
 +++ b/src/codegen/arm64/assembler-arm64.cc
-@@ -3644,6 +3644,22 @@ void Assembler::MoveWide(const Register& rd, uint64_t imm, int shift,
+@@ -3658,6 +3658,22 @@ void Assembler::MoveWide(const Register& rd, uint64_t imm, int shift,
         ImmMoveWide(static_cast<int>(imm)) | ShiftMoveWide(shift));
  }
  

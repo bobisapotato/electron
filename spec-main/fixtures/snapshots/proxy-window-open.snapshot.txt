@@ -7,11 +7,10 @@
       "processId": "placeholder-process-id"
     },
     "about:blank",
-    "frame name",
+    "frame-name",
     "new-window",
     {
       "show": true,
-      "title": "frame name",
       "width": 800,
       "height": 600,
       "top": 5,
@@ -20,6 +19,7 @@
       "x": 10,
       "y": 5,
       "webPreferences": {
+        "contextIsolation": true,
         "nodeIntegration": false,
         "webviewTag": false,
         "nodeIntegrationInSubFrames": false,
@@ -42,11 +42,10 @@
       "processId": "placeholder-process-id"
     },
     "about:blank",
-    "frame name",
+    "frame-name",
     "new-window",
     {
       "show": true,
-      "title": "frame name",
       "width": 800,
       "height": 600,
       "resizable": false,
@@ -54,6 +53,7 @@
       "y": 10,
       "webPreferences": {
         "zoomFactor": "2",
+        "contextIsolation": true,
         "nodeIntegration": false,
         "webviewTag": false,
         "nodeIntegrationInSubFrames": false,
@@ -76,15 +76,15 @@
       "processId": "placeholder-process-id"
     },
     "about:blank",
-    "frame name",
+    "frame-name",
     "new-window",
     {
       "show": true,
-      "title": "frame name",
       "width": 800,
       "height": 600,
       "backgroundColor": "gray",
       "webPreferences": {
+        "contextIsolation": true,
         "nodeIntegration": false,
         "webviewTag": false,
         "nodeIntegrationInSubFrames": false,
@@ -110,16 +110,17 @@
       "processId": "placeholder-process-id"
     },
     "about:blank",
-    "frame name",
+    "frame-name",
     "new-window",
     {
       "show": true,
-      "title": "sup",
       "width": 800,
       "height": 600,
       "x": 50,
       "y": 20,
+      "title": "sup",
       "webPreferences": {
+        "contextIsolation": true,
         "nodeIntegration": false,
         "webviewTag": false,
         "nodeIntegrationInSubFrames": false,
@@ -142,11 +143,10 @@
       "processId": "placeholder-process-id"
     },
     "about:blank",
-    "frame name",
+    "frame-name",
     "new-window",
     {
       "show": false,
-      "title": "frame name",
       "width": 800,
       "height": 600,
       "top": 1,
@@ -154,6 +154,7 @@
       "x": 1,
       "y": 1,
       "webPreferences": {
+        "contextIsolation": true,
         "nodeIntegration": false,
         "webviewTag": false,
         "nodeIntegrationInSubFrames": false,

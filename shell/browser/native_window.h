@@ -167,6 +167,7 @@ class NativeWindow : public base::SupportsUserData,
   virtual void SetParentWindow(NativeWindow* parent);
   virtual void AddBrowserView(NativeBrowserView* browser_view) = 0;
   virtual void RemoveBrowserView(NativeBrowserView* browser_view) = 0;
+  virtual void SetTopBrowserView(NativeBrowserView* browser_view) = 0;
   virtual content::DesktopMediaID GetDesktopMediaID() const = 0;
   virtual gfx::NativeView GetNativeView() const = 0;
   virtual gfx::NativeWindow GetNativeWindow() const = 0;
@@ -187,8 +188,10 @@ class NativeWindow : public base::SupportsUserData,
                               const std::string& description) = 0;
 
   // Workspace APIs.
-  virtual void SetVisibleOnAllWorkspaces(bool visible,
-                                         bool visibleOnFullScreen = false) = 0;
+  virtual void SetVisibleOnAllWorkspaces(
+      bool visible,
+      bool visibleOnFullScreen = false,
+      bool skipTransformProcessType = false) = 0;
 
   virtual bool IsVisibleOnAllWorkspaces() = 0;
 
@@ -280,8 +283,8 @@ class NativeWindow : public base::SupportsUserData,
   void NotifyWindowRotateGesture(float rotation);
   void NotifyWindowSheetBegin();
   void NotifyWindowSheetEnd();
-  void NotifyWindowEnterFullScreen();
-  void NotifyWindowLeaveFullScreen();
+  virtual void NotifyWindowEnterFullScreen();
+  virtual void NotifyWindowLeaveFullScreen();
   void NotifyWindowEnterHtmlFullScreen();
   void NotifyWindowLeaveHtmlFullScreen();
   void NotifyWindowAlwaysOnTopChanged();
@@ -382,7 +385,7 @@ class NativeWindow : public base::SupportsUserData,
   // Accessible title.
   base::string16 accessible_title_;
 
-  base::WeakPtrFactory<NativeWindow> weak_factory_;
+  base::WeakPtrFactory<NativeWindow> weak_factory_{this};
 
   DISALLOW_COPY_AND_ASSIGN(NativeWindow);
 };

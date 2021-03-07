@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Samuel Attard <sattard@slack-corp.com>
-Date: Fri, 14 Feb 2020 13:35:47 -0800
+From: deepak1556 <hop2deep@gmail.com>
+Date: Wed, 27 Jan 2021 15:24:44 -0800
 Subject: fix: route mouse event navigations through the web_contents delegate
 
 This ensures that embedders can handle browser-side mouse navigations
@@ -13,22 +13,22 @@ This patch can be removed once app.allowRendererProcessReuse is forced
 to true as then Chromiums assumptions around processes become correct.
 
 diff --git a/content/browser/web_contents/web_contents_impl.cc b/content/browser/web_contents/web_contents_impl.cc
-index f86d10039dfec898565e168650d47d879f920231..2295f76179beebe4d74ec8485134bba03609fe59 100644
+index 5c06f5d680357028cffa00f3dfdc17ff02a4a560..cefe0bab7ab42c8b0697cb64fc687545251f7410 100644
 --- a/content/browser/web_contents/web_contents_impl.cc
 +++ b/content/browser/web_contents/web_contents_impl.cc
-@@ -2972,11 +2972,13 @@ bool WebContentsImpl::HandleMouseEvent(const blink::WebMouseEvent& event) {
+@@ -3026,11 +3026,13 @@ bool WebContentsImpl::HandleMouseEvent(const blink::WebMouseEvent& event) {
      WebContentsImpl* outermost = GetOutermostWebContents();
      if (event.button == blink::WebPointerProperties::Button::kBack &&
-         outermost->controller_.CanGoBack()) {
--      outermost->controller_.GoBack();
+         outermost->GetController().CanGoBack()) {
+-      outermost->GetController().GoBack();
 +      if (delegate_->OnGoToEntryOffset(-1))
-+        outermost->controller_.GoBack();
++        outermost->GetController().GoBack();
        return true;
      } else if (event.button == blink::WebPointerProperties::Button::kForward &&
-                outermost->controller_.CanGoForward()) {
--      outermost->controller_.GoForward();
+                outermost->GetController().CanGoForward()) {
+-      outermost->GetController().GoForward();
 +      if (delegate_->OnGoToEntryOffset(1))
-+        outermost->controller_.GoForward();
++        outermost->GetController().GoForward();
        return true;
      }
    }

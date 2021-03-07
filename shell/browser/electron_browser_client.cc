@@ -13,6 +13,7 @@
 
 #include "base/base_switches.h"
 #include "base/command_line.h"
+#include "base/debug/crash_logging.h"
 #include "base/environment.h"
 #include "base/files/file_util.h"
 #include "base/json/json_reader.h"
@@ -34,7 +35,6 @@
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/client_certificate_delegate.h"
 #include "content/public/browser/login_delegate.h"
-#include "content/public/browser/non_network_url_loader_factory_base.h"
 #include "content/public/browser/overlay_window.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -58,6 +58,7 @@
 #include "services/device/public/cpp/geolocation/location_provider.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/resource_request_body.h"
+#include "services/network/public/cpp/self_deleting_url_loader_factory.h"
 #include "shell/app/electron_crash_reporter_client.h"
 #include "shell/browser/api/electron_api_app.h"
 #include "shell/browser/api/electron_api_crash_reporter.h"
@@ -568,7 +569,7 @@ content::TtsPlatform* ElectronBrowserClient::GetTtsPlatform() {
 }
 
 void ElectronBrowserClient::OverrideWebkitPrefs(
-    content::RenderViewHost* host,
+    content::WebContents* web_contents,
     blink::web_pref::WebPreferences* prefs) {
   prefs->javascript_enabled = true;
   prefs->web_security_enabled = true;
@@ -597,7 +598,6 @@ void ElectronBrowserClient::OverrideWebkitPrefs(
           ? blink::mojom::PreferredColorScheme::kDark
           : blink::mojom::PreferredColorScheme::kLight;
 
-  auto* web_contents = content::WebContents::FromRenderViewHost(host);
   auto preloads =
       SessionPreferences::GetValidPreloads(web_contents->GetBrowserContext());
   if (!preloads.empty())
@@ -719,7 +719,13 @@ void ElectronBrowserClient::AppendExtraCommandLineSwitches(
           << "Aborted from launching unexpected helper executable";
     }
 #else
-    base::PathService::Get(content::CHILD_PROCESS_EXE, &child_path);
+    if (!base::PathService::Get(content::CHILD_PROCESS_EXE, &child_path)) {
+      CHECK(false) << "Unable to get child process binary name.";
+    }
+    SCOPED_CRASH_KEY_STRING256("ChildProcess", "child_process_exe",
+                               child_path.AsUTF8Unsafe());
+    SCOPED_CRASH_KEY_STRING256("ChildProcess", "program",
+                               program.AsUTF8Unsafe());
     CHECK_EQ(program, child_path);
 #endif
   }
@@ -1107,6 +1113,7 @@ void ElectronBrowserClient::RenderProcessHostDestroyed(
   pending_processes_.erase(process_id);
   renderer_is_subframe_.erase(process_id);
   RemoveProcessPreferences(process_id);
+  host->RemoveObserver(this);
 }
 
 void ElectronBrowserClient::RenderProcessReady(
@@ -1288,7 +1295,7 @@ namespace {
 
 // The FileURLLoaderFactory provided to the extension background pages.
 // Checks with the ChildProcessSecurityPolicy to validate the file access.
-class FileURLLoaderFactory : public content::NonNetworkURLLoaderFactoryBase {
+class FileURLLoaderFactory : public network::SelfDeletingURLLoaderFactory {
  public:
   static mojo::PendingRemote<network::mojom::URLLoaderFactory> Create(
       int child_id) {
@@ -1306,7 +1313,7 @@ class FileURLLoaderFactory : public content::NonNetworkURLLoaderFactoryBase {
   explicit FileURLLoaderFactory(
       int child_id,
       mojo::PendingReceiver<network::mojom::URLLoaderFactory> factory_receiver)
-      : content::NonNetworkURLLoaderFactoryBase(std::move(factory_receiver)),
+      : network::SelfDeletingURLLoaderFactory(std::move(factory_receiver)),
         child_id_(child_id) {}
   ~FileURLLoaderFactory() override = default;
 
@@ -1567,8 +1574,10 @@ void ElectronBrowserClient::OverrideURLLoaderFactoryParams(
 }
 
 #if defined(OS_WIN)
-bool ElectronBrowserClient::PreSpawnRenderer(sandbox::TargetPolicy* policy,
-                                             RendererSpawnFlags flags) {
+bool ElectronBrowserClient::PreSpawnChild(
+    sandbox::TargetPolicy* policy,
+    sandbox::policy::SandboxType sandbox_type,
+    ChildSpawnFlags flags) {
   // Allow crashpad to communicate via named pipe.
   sandbox::ResultCode result = policy->AddRule(
       sandbox::TargetPolicy::SUBSYS_FILES,
@@ -1737,7 +1746,7 @@ ElectronBrowserClient::CreateURLLoaderThrottles(
 
 #if BUILDFLAG(ENABLE_PLUGINS) && BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   result.push_back(std::make_unique<PluginResponseInterceptorURLLoaderThrottle>(
-      request.resource_type, frame_tree_node_id));
+      request.destination, frame_tree_node_id));
 #endif
 
   return result;
@@ -1759,6 +1768,20 @@ content::SerialDelegate* ElectronBrowserClient::GetSerialDelegate() {
   if (!serial_delegate_)
     serial_delegate_ = std::make_unique<ElectronSerialDelegate>();
   return serial_delegate_.get();
+}
+
+content::BluetoothDelegate* ElectronBrowserClient::GetBluetoothDelegate() {
+  if (!bluetooth_delegate_)
+    bluetooth_delegate_ = std::make_unique<ElectronBluetoothDelegate>();
+  return bluetooth_delegate_.get();
+}
+
+void ElectronBrowserClient::BindBadgeServiceReceiverFromServiceWorker(
+    content::RenderProcessHost* service_worker_process_host,
+    const GURL& service_worker_scope,
+    mojo::PendingReceiver<blink::mojom::BadgeService> receiver) {
+  badging::BadgeManager::BindServiceWorkerReceiver(
+      service_worker_process_host, service_worker_scope, std::move(receiver));
 }
 
 }  // namespace electron

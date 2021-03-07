@@ -37,8 +37,12 @@ declare namespace Electron {
     removeListener(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
   }
 
+  interface BrowserWindowConstructorOptions {
+    webContents?: WebContents;
+  }
+
   interface ContextBridge {
-    internalContextBridge: {
+    internalContextBridge?: {
       contextIsolationEnabled: boolean;
       overrideGlobalValueFromIsolatedWorld(keys: string[], value: any): void;
       overrideGlobalValueWithDynamicPropsFromIsolatedWorld(keys: string[], value: any): void;
@@ -88,6 +92,7 @@ declare namespace Electron {
   }
 
   interface WebFrame {
+    _executeJavaScript(code: string, userGesture?: boolean): Promise<any>;
     getWebFrameId(window: Window): number;
     allowGuestViewElementDefinition(window: Window, context: any): void;
   }
@@ -100,7 +105,7 @@ declare namespace Electron {
 
   interface WebPreferences {
     guestInstanceId?: number;
-    openerId?: number;
+    openerId?: number | null;
     disablePopups?: boolean;
     preloadURL?: string;
     embedder?: Electron.WebContents;
@@ -147,9 +152,14 @@ declare namespace Electron {
     acceleratorWorksWhenHidden?: boolean;
   }
 
+  interface IpcMainEvent {
+    sendReply(value: any): void;
+  }
+
   interface IpcMainInvokeEvent {
+    sendReply(value: any): void;
     _reply(value: any): void;
-    _throw(error: Error): void;
+    _throw(error: Error | string): void;
   }
 
   const deprecate: ElectronInternal.DeprecationUtil;
@@ -236,8 +246,6 @@ declare namespace ElectronInternal {
 
   interface IpcRendererInternal extends Electron.IpcRenderer {
     invoke<T>(channel: string, ...args: any[]): Promise<T>;
-    onMessageFromMain(channel: string, listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void): this;
-    onceMessageFromMain(channel: string, listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void): this;
   }
 
   // Internal IPC has _replyInternal and NO reply method
@@ -250,8 +258,24 @@ declare namespace ElectronInternal {
     once(channel: string, listener: (event: IpcMainInternalEvent, ...args: any[]) => void): this;
   }
 
+  interface Event extends Electron.Event {
+    sender: WebContents;
+  }
+
   interface LoadURLOptions extends Electron.LoadURLOptions {
     reloadIgnoringCache?: boolean;
+  }
+
+  interface WebContentsPrintOptions extends Electron.WebContentsPrintOptions {
+    mediaSize?: MediaSize;
+  }
+
+  type MediaSize = {
+    name: string,
+    custom_display_name: string,
+    height_microns: number,
+    width_microns: number,
+    is_default?: 'true',
   }
 
   type ModuleLoader = () => any;

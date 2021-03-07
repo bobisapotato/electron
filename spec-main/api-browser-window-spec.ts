@@ -62,6 +62,15 @@ describe('BrowserWindow module', () => {
       const appProcess = childProcess.spawn(process.execPath, [appPath]);
       await new Promise((resolve) => { appProcess.once('exit', resolve); });
     });
+
+    it('does not crash or throw when passed an invalid icon', async () => {
+      expect(() => {
+        const w = new BrowserWindow({
+          icon: undefined
+        } as any);
+        w.destroy();
+      }).not.to.throw();
+    });
   });
 
   describe('garbage collection', () => {
@@ -86,7 +95,7 @@ describe('BrowserWindow module', () => {
   describe('BrowserWindow.close()', () => {
     let w = null as unknown as BrowserWindow;
     beforeEach(() => {
-      w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: true } });
+      w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: true, contextIsolation: false } });
     });
     afterEach(async () => {
       await closeWindow(w);
@@ -181,7 +190,7 @@ describe('BrowserWindow module', () => {
   describe('window.close()', () => {
     let w = null as unknown as BrowserWindow;
     beforeEach(() => {
-      w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: true } });
+      w = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: true, contextIsolation: false } });
     });
     afterEach(async () => {
       await closeWindow(w);
@@ -436,11 +445,9 @@ describe('BrowserWindow module', () => {
       });
     });
 
-    it('should support support base url for data urls', async () => {
-      const answer = emittedOnce(ipcMain, 'answer');
-      w.loadURL('data:text/html,<script src="loaded-from-dataurl.js"></script>', { baseURLForDataURL: `other://${path.join(fixtures, 'api')}${path.sep}` });
-      const [, test] = await answer;
-      expect(test).to.equal('test');
+    it('should support base url for data urls', async () => {
+      await w.loadURL('data:text/html,<script src="loaded-from-dataurl.js"></script>', { baseURLForDataURL: `other://${path.join(fixtures, 'api')}${path.sep}` });
+      expect(await w.webContents.executeJavaScript('window.ping')).to.equal('pong');
     });
   });
 
@@ -2000,6 +2007,7 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             nodeIntegration: true,
+            contextIsolation: false,
             preload
           }
         });
@@ -2014,6 +2022,7 @@ describe('BrowserWindow module', () => {
           webPreferences: {
             nodeIntegration: true,
             enableRemoteModule: true,
+            contextIsolation: false,
             preload
           }
         });
@@ -2027,6 +2036,7 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             nodeIntegration: true,
+            contextIsolation: false,
             preload
           }
         });
@@ -2066,7 +2076,8 @@ describe('BrowserWindow module', () => {
               show: false,
               webPreferences: {
                 sandbox,
-                preload: path.join(fixtures, 'module', 'get-global-preload.js')
+                preload: path.join(fixtures, 'module', 'get-global-preload.js'),
+                contextIsolation: false
               }
             });
             w.loadURL('about:blank');
@@ -2120,7 +2131,8 @@ describe('BrowserWindow module', () => {
         const w = new BrowserWindow({
           show: false,
           webPreferences: {
-            preload
+            preload,
+            contextIsolation: false
           }
         });
         w.loadFile(path.join(fixtures, 'api', 'blank.html'));
@@ -2215,7 +2227,8 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             sandbox: true,
-            preload
+            preload,
+            contextIsolation: false
           }
         });
         w.loadFile(path.join(fixtures, 'api', 'preload.html'));
@@ -2229,7 +2242,8 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             sandbox: true,
-            preload: preloadSpecialChars
+            preload: preloadSpecialChars,
+            contextIsolation: false
           }
         });
         w.loadFile(path.join(fixtures, 'api', 'preload.html'));
@@ -2254,7 +2268,8 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             sandbox: true,
-            preload
+            preload,
+            contextIsolation: false
           }
         });
         const htmlPath = path.join(__dirname, 'fixtures', 'api', 'sandbox.html?exit-event');
@@ -2272,7 +2287,8 @@ describe('BrowserWindow module', () => {
           show: true,
           webPreferences: {
             sandbox: true,
-            preload
+            preload,
+            contextIsolation: false
           }
         });
 
@@ -2306,7 +2322,8 @@ describe('BrowserWindow module', () => {
           show: true,
           webPreferences: {
             sandbox: true,
-            preload
+            preload,
+            contextIsolation: false
           }
         });
 
@@ -2404,7 +2421,8 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             sandbox: true,
-            preload
+            preload,
+            contextIsolation: false
           }
         });
         let childWc: WebContents | null = null;
@@ -2501,7 +2519,8 @@ describe('BrowserWindow module', () => {
           webPreferences: {
             preload,
             sandbox: true,
-            enableRemoteModule: true
+            enableRemoteModule: true,
+            contextIsolation: false
           }
         });
         w.loadFile(path.join(__dirname, 'fixtures', 'api', 'sandbox.html'), { search: 'reload-remote' });
@@ -2538,7 +2557,8 @@ describe('BrowserWindow module', () => {
           webPreferences: {
             preload,
             sandbox: true,
-            enableRemoteModule: true
+            enableRemoteModule: true,
+            contextIsolation: false
           }
         });
         w.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { webPreferences: { preload } } }));
@@ -2576,7 +2596,8 @@ describe('BrowserWindow module', () => {
           show: false,
           webPreferences: {
             sandbox: true,
-            preload
+            preload,
+            contextIsolation: false
           }
         });
         w.webContents.once('preload-error', (event, preloadPath, error) => {
@@ -2618,7 +2639,8 @@ describe('BrowserWindow module', () => {
           webPreferences: {
             sandbox: true,
             preload,
-            webviewTag: true
+            webviewTag: true,
+            contextIsolation: false
           }
         });
         const didAttachWebview = emittedOnce(w.webContents, 'did-attach-webview');
@@ -2641,7 +2663,8 @@ describe('BrowserWindow module', () => {
             nodeIntegration: true,
             nativeWindowOpen: true,
             // tests relies on preloads in opened windows
-            nodeIntegrationInSubFrames: true
+            nodeIntegrationInSubFrames: true,
+            contextIsolation: false
           }
         });
       });
@@ -2691,6 +2714,7 @@ describe('BrowserWindow module', () => {
             nodeIntegrationInSubFrames: true,
             nativeWindowOpen: true,
             webviewTag: true,
+            contextIsolation: false,
             preload
           }
         });
@@ -2763,7 +2787,8 @@ describe('BrowserWindow module', () => {
             webPreferences: {
               nativeWindowOpen: true,
               // test relies on preloads in opened window
-              nodeIntegrationInSubFrames: true
+              nodeIntegrationInSubFrames: true,
+              contextIsolation: false
             }
           });
 
@@ -2950,7 +2975,8 @@ describe('BrowserWindow module', () => {
         width: 100,
         height: 100,
         webPreferences: {
-          nodeIntegration: true
+          nodeIntegration: true,
+          contextIsolation: false
         }
       });
 
@@ -2974,7 +3000,8 @@ describe('BrowserWindow module', () => {
         width: 100,
         height: 100,
         webPreferences: {
-          nodeIntegration: true
+          nodeIntegration: true,
+          contextIsolation: false
         }
       });
 
@@ -3001,7 +3028,8 @@ describe('BrowserWindow module', () => {
         width: 100,
         height: 100,
         webPreferences: {
-          nodeIntegration: true
+          nodeIntegration: true,
+          contextIsolation: false
         }
       });
 
@@ -3021,7 +3049,8 @@ describe('BrowserWindow module', () => {
         width: 100,
         height: 100,
         webPreferences: {
-          nodeIntegration: true
+          nodeIntegration: true,
+          contextIsolation: false
         }
       });
       w.loadFile(path.join(fixtures, 'pages', 'visibilitychange.html'));
@@ -3041,7 +3070,8 @@ describe('BrowserWindow module', () => {
         width: 100,
         height: 100,
         webPreferences: {
-          nodeIntegration: true
+          nodeIntegration: true,
+          contextIsolation: false
         }
       });
       w.loadFile(path.join(fixtures, 'pages', 'visibilitychange.html'));
@@ -4414,7 +4444,8 @@ describe('BrowserWindow module', () => {
       const w = new BrowserWindow({
         show: false,
         webPreferences: {
-          nodeIntegration: true
+          nodeIntegration: true,
+          contextIsolation: false
         }
       });
 
