@@ -3,13 +3,8 @@ import { WebViewImpl } from '@electron/internal/renderer/web-view/web-view-impl'
 import { WEB_VIEW_CONSTANTS } from '@electron/internal/renderer/web-view/web-view-constants';
 import { IPC_MESSAGES } from '@electron/internal/common/ipc-messages';
 
-// Helper function to resolve url set in attribute.
-const a = document.createElement('a');
-
 const resolveURL = function (url?: string | null) {
-  if (!url) return '';
-  a.href = url;
-  return a.href;
+  return url ? new URL(url, location.href).href : '';
 };
 
 interface MutationHandler {
@@ -259,20 +254,6 @@ class WebPreferencesAttribute extends WebViewAttribute {
   }
 }
 
-class EnableRemoteModuleAttribute extends WebViewAttribute {
-  constructor (webViewImpl: WebViewImpl) {
-    super(WEB_VIEW_CONSTANTS.ATTRIBUTE_ENABLEREMOTEMODULE, webViewImpl);
-  }
-
-  public getValue () {
-    return this.webViewImpl.webviewNode.getAttribute(this.name) !== 'false';
-  }
-
-  public setValue (value: any) {
-    this.webViewImpl.webviewNode.setAttribute(this.name, value ? 'true' : 'false');
-  }
-}
-
 // Sets up all of the webview attributes.
 WebViewImpl.prototype.setupWebViewAttributes = function () {
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_PARTITION, new PartitionAttribute(this));
@@ -284,7 +265,6 @@ WebViewImpl.prototype.setupWebViewAttributes = function () {
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_PLUGINS, new BooleanAttribute(WEB_VIEW_CONSTANTS.ATTRIBUTE_PLUGINS, this));
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_DISABLEWEBSECURITY, new BooleanAttribute(WEB_VIEW_CONSTANTS.ATTRIBUTE_DISABLEWEBSECURITY, this));
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_ALLOWPOPUPS, new BooleanAttribute(WEB_VIEW_CONSTANTS.ATTRIBUTE_ALLOWPOPUPS, this));
-  this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_ENABLEREMOTEMODULE, new EnableRemoteModuleAttribute(this));
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_PRELOAD, new PreloadAttribute(this));
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_BLINKFEATURES, new BlinkFeaturesAttribute(this));
   this.attributes.set(WEB_VIEW_CONSTANTS.ATTRIBUTE_DISABLEBLINKFEATURES, new DisableBlinkFeaturesAttribute(this));

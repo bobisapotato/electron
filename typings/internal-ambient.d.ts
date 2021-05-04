@@ -7,7 +7,6 @@ declare var binding: { get: (name: string) => any; process: NodeJS.Process; crea
 declare const BUILDFLAG: (flag: boolean) => boolean;
 
 declare const ENABLE_DESKTOP_CAPTURER: boolean;
-declare const ENABLE_REMOTE_MODULE: boolean;
 declare const ENABLE_VIEWS_API: boolean;
 
 declare namespace NodeJS {
@@ -15,7 +14,6 @@ declare namespace NodeJS {
     isBuiltinSpellCheckerEnabled(): boolean;
     isDesktopCapturerEnabled(): boolean;
     isOffscreenRenderingEnabled(): boolean;
-    isRemoteModuleEnabled(): boolean;
     isPDFViewerEnabled(): boolean;
     isRunAsNodeEnabled(): boolean;
     isFakeLocationProviderEnabled(): boolean;
@@ -45,7 +43,7 @@ declare namespace NodeJS {
     weaklyTrackValue(value: any): void;
     clearWeaklyTrackedValues(): void;
     getWeaklyTrackedValues(): any[];
-    addRemoteObjectRef(contextId: string, id: number): void;
+    runUntilIdle(): void;
     isSameOrigin(a: string, b: string): boolean;
     triggerFatalErrorForTesting(): void;
   }
@@ -78,8 +76,7 @@ declare namespace NodeJS {
     readdir(path: string): string[] | false;
     realpath(path: string): string | false;
     copyFileOut(path: string): string | false;
-    read(offset: number, size: number): Promise<ArrayBuffer>;
-    readSync(offset: number, size: number): ArrayBuffer;
+    getFd(): number | -1;
   }
 
   interface AsarBinding {
@@ -100,8 +97,28 @@ declare namespace NodeJS {
   }
 
   interface WebViewManagerBinding {
-    addGuest(guestInstanceId: number, elementInstanceId: number, embedder: Electron.WebContents, guest: Electron.WebContents, webPreferences: Electron.WebPreferences): void;
+    addGuest(guestInstanceId: number, embedder: Electron.WebContents, guest: Electron.WebContents, webPreferences: Electron.WebPreferences): void;
     removeGuest(embedder: Electron.WebContents, guestInstanceId: number): void;
+  }
+
+  interface InternalWebPreferences {
+    contextIsolation: boolean;
+    guestInstanceId: number;
+    hiddenPage: boolean;
+    nativeWindowOpen: boolean;
+    nodeIntegration: boolean;
+    openerId: number;
+    preload: string
+    preloadScripts: string[];
+    webviewTag: boolean;
+  }
+
+  interface InternalWebFrame extends Electron.WebFrame {
+    getWebPreference<K extends keyof InternalWebPreferences>(name: K): InternalWebPreferences[K];
+  }
+
+  interface WebFrameBinding {
+    mainFrame: InternalWebFrame;
   }
 
   type DataPipe = {
@@ -221,6 +238,7 @@ declare namespace NodeJS {
     }
     _linkedBinding(name: 'electron_renderer_crash_reporter'): Electron.CrashReporter;
     _linkedBinding(name: 'electron_renderer_ipc'): { ipc: IpcRendererBinding };
+    _linkedBinding(name: 'electron_renderer_web_frame'): WebFrameBinding;
     log: NodeJS.WriteStream['write'];
     activateUvLoop(): void;
 

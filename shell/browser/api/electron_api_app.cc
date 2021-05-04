@@ -549,7 +549,7 @@ void OnClientCertificateSelected(
 #if defined(USE_NSS_CERTS)
 int ImportIntoCertStore(CertificateManagerModel* model, base::Value options) {
   std::string file_data, cert_path;
-  base::string16 password;
+  std::u16string password;
   net::ScopedCERTCertificateList imported_certs;
   int rv = -1;
 
@@ -627,7 +627,7 @@ void App::OnWindowAllClosed() {
 }
 
 void App::OnQuit() {
-  int exitCode = ElectronBrowserMainParts::Get()->GetExitCode();
+  const int exitCode = ElectronBrowserMainParts::Get()->GetExitCode();
   Emit("quit", exitCode);
 
   if (process_singleton_) {
@@ -877,17 +877,6 @@ void App::BrowserChildProcessCrashedOrKilled(
 void App::RenderProcessReady(content::RenderProcessHost* host) {
   ChildProcessLaunched(content::PROCESS_TYPE_RENDERER, host->GetID(),
                        host->GetProcess().Handle());
-
-  // TODO(jeremy): this isn't really the right place to be creating
-  // `WebContents` instances, but this was implicitly happening before in
-  // `RenderProcessPreferences`, so this is at least more explicit...
-  content::WebContents* web_contents =
-      ElectronBrowserClient::Get()->GetWebContentsFromProcessID(host->GetID());
-  if (web_contents) {
-    v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
-    v8::HandleScope scope(isolate);
-    WebContents::FromOrCreate(isolate, web_contents);
-  }
 }
 
 void App::RenderProcessExited(content::RenderProcessHost* host) {
@@ -1300,12 +1289,12 @@ v8::Local<v8::Promise> App::GetFileIcon(const base::FilePath& path,
 
   auto* icon_manager = ElectronBrowserMainParts::Get()->GetIconManager();
   gfx::Image* icon =
-      icon_manager->LookupIconFromFilepath(normalized_path, icon_size);
+      icon_manager->LookupIconFromFilepath(normalized_path, icon_size, 1.0f);
   if (icon) {
     promise.Resolve(*icon);
   } else {
     icon_manager->LoadIcon(
-        normalized_path, icon_size,
+        normalized_path, icon_size, 1.0f,
         base::BindOnce(&OnIconDataAvailable, std::move(promise)),
         &cancelable_task_tracker_);
   }
@@ -1457,13 +1446,6 @@ std::string App::GetUserAgentFallback() {
   return ElectronBrowserClient::Get()->GetUserAgent();
 }
 
-void App::SetBrowserClientCanUseCustomSiteInstance(bool should_disable) {
-  ElectronBrowserClient::Get()->SetCanUseCustomSiteInstance(should_disable);
-}
-bool App::CanBrowserClientUseCustomSiteInstance() {
-  return ElectronBrowserClient::Get()->CanUseCustomSiteInstance();
-}
-
 #if defined(OS_MAC)
 bool App::MoveToApplicationsFolder(gin_helper::ErrorThrower thrower,
                                    gin::Arguments* args) {
@@ -1553,8 +1535,10 @@ gin::ObjectTemplateBuilder App::GetObjectTemplateBuilder(v8::Isolate* isolate) {
                  base::BindRepeating(&Browser::AddRecentDocument, browser))
       .SetMethod("clearRecentDocuments",
                  base::BindRepeating(&Browser::ClearRecentDocuments, browser))
+#if defined(OS_WIN)
       .SetMethod("setAppUserModelId",
                  base::BindRepeating(&Browser::SetAppUserModelID, browser))
+#endif
       .SetMethod(
           "isDefaultProtocolClient",
           base::BindRepeating(&Browser::IsDefaultProtocolClient, browser))
@@ -1663,10 +1647,7 @@ gin::ObjectTemplateBuilder App::GetObjectTemplateBuilder(v8::Isolate* isolate) {
 #endif
       .SetProperty("userAgentFallback", &App::GetUserAgentFallback,
                    &App::SetUserAgentFallback)
-      .SetMethod("enableSandbox", &App::EnableSandbox)
-      .SetProperty("allowRendererProcessReuse",
-                   &App::CanBrowserClientUseCustomSiteInstance,
-                   &App::SetBrowserClientCanUseCustomSiteInstance);
+      .SetMethod("enableSandbox", &App::EnableSandbox);
 }
 
 const char* App::GetTypeName() {

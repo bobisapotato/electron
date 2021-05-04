@@ -74,6 +74,7 @@
 #include "mojo/public/cpp/system/platform_handle.h"
 #include "ppapi/buildflags/buildflags.h"
 #include "printing/buildflags/buildflags.h"
+#include "printing/print_job_constants.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "shell/browser/api/electron_api_browser_window.h"
 #include "shell/browser/api/electron_api_debugger.h"
@@ -157,6 +158,7 @@
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
 #include "extensions/browser/script_executor.h"
 #include "extensions/browser/view_type_utils.h"
+#include "extensions/common/mojom/view_type.mojom.h"
 #include "shell/browser/extensions/electron_extension_web_contents_observer.h"
 #endif
 
@@ -407,7 +409,7 @@ base::Optional<base::TimeDelta> GetCursorBlinkInterval() {
 // This will return false if no printer with the provided device_name can be
 // found on the network. We need to check this because Chromium does not do
 // sanity checking of device_name validity and so will crash on invalid names.
-bool IsDeviceNameValid(const base::string16& device_name) {
+bool IsDeviceNameValid(const std::u16string& device_name) {
 #if defined(OS_MAC)
   base::ScopedCFTypeRef<CFStringRef> new_printer_id(
       base::SysUTF16ToCFStringRef(device_name));
@@ -417,12 +419,12 @@ bool IsDeviceNameValid(const base::string16& device_name) {
   return printer_exists;
 #elif defined(OS_WIN)
   printing::ScopedPrinterHandle printer;
-  return printer.OpenPrinterWithName(device_name.c_str());
+  return printer.OpenPrinterWithName(base::UTF16ToWide(device_name).c_str());
 #endif
   return true;
 }
 
-base::string16 GetDefaultPrinterAsync() {
+std::u16string GetDefaultPrinterAsync() {
 #if defined(OS_WIN)
   // Blocking is needed here because Windows printer drivers are oftentimes
   // not thread-safe and have to be accessed on the UI thread.
@@ -591,19 +593,19 @@ bool IsDevToolsFileSystemAdded(content::WebContents* web_contents,
 
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
 
-WebContents::Type GetTypeFromViewType(extensions::ViewType view_type) {
+WebContents::Type GetTypeFromViewType(extensions::mojom::ViewType view_type) {
   switch (view_type) {
-    case extensions::VIEW_TYPE_EXTENSION_BACKGROUND_PAGE:
+    case extensions::mojom::ViewType::kExtensionBackgroundPage:
       return WebContents::Type::kBackgroundPage;
 
-    case extensions::VIEW_TYPE_APP_WINDOW:
-    case extensions::VIEW_TYPE_COMPONENT:
-    case extensions::VIEW_TYPE_EXTENSION_DIALOG:
-    case extensions::VIEW_TYPE_EXTENSION_POPUP:
-    case extensions::VIEW_TYPE_BACKGROUND_CONTENTS:
-    case extensions::VIEW_TYPE_EXTENSION_GUEST:
-    case extensions::VIEW_TYPE_TAB_CONTENTS:
-    case extensions::VIEW_TYPE_INVALID:
+    case extensions::mojom::ViewType::kAppWindow:
+    case extensions::mojom::ViewType::kComponent:
+    case extensions::mojom::ViewType::kExtensionDialog:
+    case extensions::mojom::ViewType::kExtensionPopup:
+    case extensions::mojom::ViewType::kBackgroundContents:
+    case extensions::mojom::ViewType::kExtensionGuest:
+    case extensions::mojom::ViewType::kTabContents:
+    case extensions::mojom::ViewType::kInvalid:
       return WebContents::Type::kRemote;
   }
 }
@@ -625,8 +627,8 @@ WebContents::WebContents(v8::Isolate* isolate,
 {
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   // WebContents created by extension host will have valid ViewType set.
-  extensions::ViewType view_type = extensions::GetViewType(web_contents);
-  if (view_type != extensions::VIEW_TYPE_INVALID) {
+  extensions::mojom::ViewType view_type = extensions::GetViewType(web_contents);
+  if (view_type != extensions::mojom::ViewType::kInvalid) {
     InitWithExtensionView(isolate, web_contents, view_type);
   }
 
@@ -865,7 +867,7 @@ void WebContents::InitWithSessionAndOptions(
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
 void WebContents::InitWithExtensionView(v8::Isolate* isolate,
                                         content::WebContents* web_contents,
-                                        extensions::ViewType view_type) {
+                                        extensions::mojom::ViewType view_type) {
   // Must reassign type prior to calling `Init`.
   type_ = GetTypeFromViewType(view_type);
   if (GetType() == Type::kRemote)
@@ -909,59 +911,58 @@ void WebContents::InitWithWebContents(content::WebContents* web_contents,
 }
 
 WebContents::~WebContents() {
-  MarkDestroyed();
-  // The destroy() is called.
-  if (inspectable_web_contents_) {
-#if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
-    if (type_ == Type::kBackgroundPage) {
-      // Background pages are owned by extensions::ExtensionHost
-      inspectable_web_contents_->ReleaseWebContents();
-    }
-#endif
-
-    inspectable_web_contents_->GetView()->SetDelegate(nullptr);
-
-    if (web_contents()) {
-      RenderViewDeleted(web_contents()->GetRenderViewHost());
-    }
-
-    if (type_ == Type::kBrowserWindow && owner_window()) {
-      // For BrowserWindow we should close the window and clean up everything
-      // before WebContents is destroyed.
-      for (ExtendedWebContentsObserver& observer : observers_)
-        observer.OnCloseContents();
-      // BrowserWindow destroys WebContents asynchronously, manually emit the
-      // destroyed event here.
-      WebContentsDestroyed();
-    } else if (Browser::Get()->is_shutting_down()) {
-      // Destroy WebContents directly when app is shutting down.
-      DestroyWebContents(false /* async */);
-    } else {
-      // Destroy WebContents asynchronously unless app is shutting down,
-      // because destroy() might be called inside WebContents's event handler.
-      bool is_browser_view = type_ == Type::kBrowserView;
-      DestroyWebContents(!(IsGuest() || is_browser_view) /* async */);
-      // The WebContentsDestroyed will not be called automatically because we
-      // destroy the webContents in the next tick. So we have to manually
-      // call it here to make sure "destroyed" event is emitted.
-      WebContentsDestroyed();
-    }
+  if (!inspectable_web_contents_) {
+    WebContentsDestroyed();
+    return;
   }
-}
 
-void WebContents::DestroyWebContents(bool async) {
+  inspectable_web_contents_->GetView()->SetDelegate(nullptr);
+  if (guest_delegate_)
+    guest_delegate_->WillDestroy();
+
   // This event is only for internal use, which is emitted when WebContents is
   // being destroyed.
   Emit("will-destroy");
-  ResetManagedWebContents(async);
+
+  // For guest view based on OOPIF, the WebContents is released by the embedder
+  // frame, and we need to clear the reference to the memory.
+  bool not_owned_by_this = IsGuest() && attached_;
+#if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
+  // And background pages are owned by extensions::ExtensionHost.
+  if (type_ == Type::kBackgroundPage)
+    not_owned_by_this = true;
+#endif
+  if (not_owned_by_this) {
+    inspectable_web_contents_->ReleaseWebContents();
+    WebContentsDestroyed();
+  }
+
+  // InspectableWebContents will be automatically destroyed.
+}
+
+void WebContents::Destroy() {
+  // The content::WebContents should be destroyed asyncronously when possible
+  // as user may choose to destroy WebContents during an event of it.
+  if (Browser::Get()->is_shutting_down() || IsGuest() ||
+      type_ == Type::kBrowserView) {
+    delete this;
+  } else {
+    base::PostTask(FROM_HERE, {content::BrowserThread::UI},
+                   base::BindOnce(
+                       [](base::WeakPtr<WebContents> contents) {
+                         if (contents)
+                           delete contents.get();
+                       },
+                       GetWeakPtr()));
+  }
 }
 
 bool WebContents::DidAddMessageToConsole(
     content::WebContents* source,
     blink::mojom::ConsoleMessageLevel level,
-    const base::string16& message,
+    const std::u16string& message,
     int32_t line_no,
-    const base::string16& source_id) {
+    const std::u16string& source_id) {
   return Emit("console-message", static_cast<int32_t>(level), message, line_no,
               source_id);
 }
@@ -1012,8 +1013,9 @@ bool WebContents::IsWebContentsCreationOverridden(
     content::mojom::WindowContainerType window_container_type,
     const GURL& opener_url,
     const content::mojom::CreateNewWindowParams& params) {
-  bool default_prevented = Emit("-will-add-new-contents", params.target_url,
-                                params.frame_name, params.raw_features);
+  bool default_prevented = Emit(
+      "-will-add-new-contents", params.target_url, params.frame_name,
+      params.raw_features, params.disposition, *params.referrer, params.body);
   // If the app prevented the default, redirect to CreateCustomWebContents,
   // which always returns nullptr, which will result in the window open being
   // prevented (window.open() will return null in the renderer).
@@ -1037,7 +1039,7 @@ content::WebContents* WebContents::CreateCustomWebContents(
     const GURL& opener_url,
     const std::string& frame_name,
     const GURL& target_url,
-    const std::string& partition_id,
+    const content::StoragePartitionId& partition_id,
     content::SessionStorageNamespace* session_storage_namespace) {
   return nullptr;
 }
@@ -1059,11 +1061,21 @@ void WebContents::AddNewContents(
   v8::HandleScope handle_scope(isolate);
   auto api_web_contents =
       CreateAndTake(isolate, std::move(new_contents), Type::kBrowserWindow);
+
+  // We call RenderFrameCreated here as at this point the empty "about:blank"
+  // render frame has already been created.  If the window never navigates again
+  // RenderFrameCreated won't be called and certain prefs like
+  // "kBackgroundColor" will not be applied.
+  auto* frame = api_web_contents->MainFrame();
+  if (frame) {
+    api_web_contents->HandleNewRenderFrame(frame);
+  }
+
   if (Emit("-add-new-contents", api_web_contents, disposition, user_gesture,
            initial_rect.x(), initial_rect.y(), initial_rect.width(),
            initial_rect.height(), tracker->url, tracker->frame_name,
            tracker->referrer, tracker->raw_features, tracker->body)) {
-    api_web_contents->DestroyWebContents(false /* async */);
+    api_web_contents->Destroy();
   }
 }
 
@@ -1110,7 +1122,8 @@ content::WebContents* WebContents::OpenURLFromTab(
 void WebContents::BeforeUnloadFired(content::WebContents* tab,
                                     bool proceed,
                                     bool* proceed_to_fire_unload) {
-  if (type_ == Type::kBrowserWindow || type_ == Type::kOffScreen)
+  if (type_ == Type::kBrowserWindow || type_ == Type::kOffScreen ||
+      type_ == Type::kBrowserView)
     *proceed_to_fire_unload = proceed;
   else
     *proceed_to_fire_unload = true;
@@ -1133,8 +1146,6 @@ void WebContents::CloseContents(content::WebContents* source) {
     autofill_driver_factory->CloseAllPopups();
   }
 
-  if (inspectable_web_contents_)
-    inspectable_web_contents_->GetView()->SetDelegate(nullptr);
   for (ExtendedWebContentsObserver& observer : observers_)
     observer.OnCloseContents();
 }
@@ -1350,7 +1361,7 @@ void WebContents::BeforeUnloadFired(bool proceed,
   // there are two virtual functions named BeforeUnloadFired.
 }
 
-void WebContents::RenderFrameCreated(
+void WebContents::HandleNewRenderFrame(
     content::RenderFrameHost* render_frame_host) {
   auto* rwhv = render_frame_host->GetView();
   if (!rwhv)
@@ -1377,6 +1388,11 @@ void WebContents::RenderFrameCreated(
     rwh_impl->disable_hidden_ = !background_throttling_;
 
   WebFrameMain::RenderFrameCreated(render_frame_host);
+}
+
+void WebContents::RenderFrameCreated(
+    content::RenderFrameHost* render_frame_host) {
+  HandleNewRenderFrame(render_frame_host);
 }
 
 void WebContents::RenderViewDeleted(content::RenderViewHost* render_view_host) {
@@ -1705,7 +1721,7 @@ void WebContents::DidFinishNavigation(
 }
 
 void WebContents::TitleWasSet(content::NavigationEntry* entry) {
-  base::string16 final_title;
+  std::u16string final_title;
   bool explicit_set = true;
   if (entry) {
     auto title = entry->GetTitle();
@@ -1749,6 +1765,7 @@ void WebContents::DevToolsOpened() {
   v8::Locker locker(isolate);
   v8::HandleScope handle_scope(isolate);
   DCHECK(inspectable_web_contents_);
+  DCHECK(inspectable_web_contents_->GetDevToolsWebContents());
   auto handle = FromOrCreate(
       isolate, inspectable_web_contents_->GetDevToolsWebContents());
   devtools_web_contents_.Reset(isolate, handle.ToV8());
@@ -1811,21 +1828,6 @@ void WebContents::SetOwnerWindow(content::WebContents* web_contents,
 #endif
 }
 
-void WebContents::ResetManagedWebContents(bool async) {
-  if (async) {
-    // Browser context should be destroyed only after the WebContents,
-    // this is guaranteed in the sync mode by the order of declaration,
-    // in the async version we maintain a reference until the WebContents
-    // is destroyed.
-    // //electron/patches/chromium/content_browser_main_loop.patch
-    // is required to get the right quit closure for the main message loop.
-    base::ThreadTaskRunnerHandle::Get()->DeleteSoon(
-        FROM_HERE, inspectable_web_contents_.release());
-  } else {
-    inspectable_web_contents_.reset();
-  }
-}
-
 content::WebContents* WebContents::GetWebContents() const {
   if (!inspectable_web_contents_)
     return nullptr;
@@ -1838,7 +1840,8 @@ content::WebContents* WebContents::GetDevToolsWebContents() const {
   return inspectable_web_contents_->GetDevToolsWebContents();
 }
 
-void WebContents::MarkDestroyed() {
+void WebContents::WebContentsDestroyed() {
+  // Clear the pointer stored in wrapper.
   if (GetAllWebContents().Lookup(id_))
     GetAllWebContents().Remove(id_);
   v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
@@ -1847,52 +1850,9 @@ void WebContents::MarkDestroyed() {
   if (!GetWrapper(isolate).ToLocal(&wrapper))
     return;
   wrapper->SetAlignedPointerInInternalField(0, nullptr);
-}
 
-// There are three ways of destroying a webContents:
-// 1. call webContents.destroy();
-// 2. garbage collection;
-// 3. user closes the window of webContents;
-// 4. the embedder detaches the frame.
-// For webview only #4 will happen, for BrowserWindow both #1 and #3 may
-// happen. The #2 should never happen for webContents, because webview is
-// managed by GuestViewManager, and BrowserWindow's webContents is managed
-// by api::BrowserWindow.
-// For #1, the destructor will do the cleanup work and we only need to make
-// sure "destroyed" event is emitted. For #3, the content::WebContents will
-// be destroyed on close, and WebContentsDestroyed would be called for it, so
-// we need to make sure the api::WebContents is also deleted.
-// For #4, the WebContents will be destroyed by embedder.
-void WebContents::WebContentsDestroyed() {
-  // Give chance for guest delegate to cleanup its observers
-  // since the native class is only destroyed in the next tick.
-  if (guest_delegate_)
-    guest_delegate_->WillDestroy();
-
-  // Cleanup relationships with other parts.
-
-  // We can not call Destroy here because we need to call Emit first, but we
-  // also do not want any method to be used, so just mark as destroyed here.
-  MarkDestroyed();
-
-  Observe(nullptr);  // this->web_contents() will return nullptr
+  Observe(nullptr);
   Emit("destroyed");
-
-  // For guest view based on OOPIF, the WebContents is released by the embedder
-  // frame, and we need to clear the reference to the memory.
-  if (IsGuest() && inspectable_web_contents_) {
-    inspectable_web_contents_->ReleaseWebContents();
-    ResetManagedWebContents(false);
-  }
-
-  // Destroy the native class in next tick.
-  base::ThreadTaskRunnerHandle::Get()->PostTask(
-      FROM_HERE, base::BindOnce(
-                     [](base::WeakPtr<WebContents> wc) {
-                       if (wc)
-                         delete wc.get();
-                     },
-                     GetWeakPtr()));
 }
 
 void WebContents::NavigationEntryCommitted(
@@ -1947,6 +1907,10 @@ bool WebContents::Equal(const WebContents* web_contents) const {
   return ID() == web_contents->ID();
 }
 
+GURL WebContents::GetURL() const {
+  return web_contents()->GetLastCommittedURL();
+}
+
 void WebContents::LoadURL(const GURL& url,
                           const gin_helper::Dictionary& options) {
   if (!url.is_valid() || url.spec().size() > url::kMaxURLChars) {
@@ -1997,7 +1961,6 @@ void WebContents::LoadURL(const GURL& url,
   auto weak_this = GetWeakPtr();
 
   params.transition_type = ui::PAGE_TRANSITION_TYPED;
-  params.should_clear_history_list = true;
   params.override_user_agent = content::NavigationController::UA_OVERRIDE_TRUE;
   // Discord non-committed entries to ensure that we don't re-use a pending
   // entry
@@ -2014,6 +1977,23 @@ void WebContents::LoadURL(const GURL& url,
   NotifyUserActivation();
 }
 
+// TODO(MarshallOfSound): Figure out what we need to do with post data here, I
+// believe the default behavior when we pass "true" is to phone out to the
+// delegate and then the controller expects this method to be called again with
+// "false" if the user approves the reload.  For now this would result in
+// ".reload()" calls on POST data domains failing silently.  Passing false would
+// result in them succeeding, but reposting which although more correct could be
+// considering a breaking change.
+void WebContents::Reload() {
+  web_contents()->GetController().Reload(content::ReloadType::NORMAL,
+                                         /* check_for_repost */ true);
+}
+
+void WebContents::ReloadIgnoringCache() {
+  web_contents()->GetController().Reload(content::ReloadType::BYPASSING_CACHE,
+                                         /* check_for_repost */ true);
+}
+
 void WebContents::DownloadURL(const GURL& url) {
   auto* browser_context = web_contents()->GetBrowserContext();
   auto* download_manager =
@@ -2024,11 +2004,7 @@ void WebContents::DownloadURL(const GURL& url) {
   download_manager->DownloadUrl(std::move(download_params));
 }
 
-GURL WebContents::GetURL() const {
-  return web_contents()->GetURL();
-}
-
-base::string16 WebContents::GetTitle() const {
+std::u16string WebContents::GetTitle() const {
   return web_contents()->GetTitle();
 }
 
@@ -2048,25 +2024,56 @@ void WebContents::Stop() {
   web_contents()->Stop();
 }
 
+bool WebContents::CanGoBack() const {
+  return web_contents()->GetController().CanGoBack();
+}
+
 void WebContents::GoBack() {
-  if (!ElectronBrowserClient::Get()->CanUseCustomSiteInstance()) {
-    electron::ElectronBrowserClient::SuppressRendererProcessRestartForOnce();
-  }
-  web_contents()->GetController().GoBack();
+  if (CanGoBack())
+    web_contents()->GetController().GoBack();
+}
+
+bool WebContents::CanGoForward() const {
+  return web_contents()->GetController().CanGoForward();
 }
 
 void WebContents::GoForward() {
-  if (!ElectronBrowserClient::Get()->CanUseCustomSiteInstance()) {
-    electron::ElectronBrowserClient::SuppressRendererProcessRestartForOnce();
-  }
-  web_contents()->GetController().GoForward();
+  if (CanGoForward())
+    web_contents()->GetController().GoForward();
+}
+
+bool WebContents::CanGoToOffset(int offset) const {
+  return web_contents()->GetController().CanGoToOffset(offset);
 }
 
 void WebContents::GoToOffset(int offset) {
-  if (!ElectronBrowserClient::Get()->CanUseCustomSiteInstance()) {
-    electron::ElectronBrowserClient::SuppressRendererProcessRestartForOnce();
+  if (CanGoToOffset(offset))
+    web_contents()->GetController().GoToOffset(offset);
+}
+
+bool WebContents::CanGoToIndex(int index) const {
+  return index >= 0 && index < GetHistoryLength();
+}
+
+void WebContents::GoToIndex(int index) {
+  if (CanGoToIndex(index))
+    web_contents()->GetController().GoToIndex(index);
+}
+
+int WebContents::GetActiveIndex() const {
+  return web_contents()->GetController().GetCurrentEntryIndex();
+}
+
+void WebContents::ClearHistory() {
+  // In some rare cases (normally while there is no real history) we are in a
+  // state where we can't prune navigation entries
+  if (web_contents()->GetController().CanPruneAllButLastCommitted()) {
+    web_contents()->GetController().PruneAllButLastCommitted();
   }
-  web_contents()->GetController().GoToOffset(offset);
+}
+
+int WebContents::GetHistoryLength() const {
+  return web_contents()->GetController().GetEntryCount();
 }
 
 const std::string WebContents::GetWebRTCIPHandlingPolicy() const {
@@ -2337,9 +2344,9 @@ bool WebContents::IsCurrentlyAudible() {
 void WebContents::OnGetDefaultPrinter(
     base::Value print_settings,
     printing::CompletionCallback print_callback,
-    base::string16 device_name,
+    std::u16string device_name,
     bool silent,
-    base::string16 default_printer) {
+    std::u16string default_printer) {
   // The content::WebContents might be already deleted at this point, and the
   // PrintViewManagerBasic class does not do null check.
   if (!web_contents()) {
@@ -2348,7 +2355,7 @@ void WebContents::OnGetDefaultPrinter(
     return;
   }
 
-  base::string16 printer_name =
+  std::u16string printer_name =
       device_name.empty() ? default_printer : device_name;
 
   // If there are no valid printers available on the network, we bail.
@@ -2446,7 +2453,7 @@ void WebContents::Print(gin::Arguments* args) {
   // We set the default to the system's default printer and only update
   // if at the Chromium level if the user overrides.
   // Printer device name as opened by the OS.
-  base::string16 device_name;
+  std::u16string device_name;
   options.Get("deviceName", &device_name);
   if (!device_name.empty() && !IsDeviceNameValid(device_name)) {
     gin_helper::ErrorThrower(args->isolate())
@@ -2615,16 +2622,16 @@ void WebContents::Unselect() {
   web_contents()->CollapseSelection();
 }
 
-void WebContents::Replace(const base::string16& word) {
+void WebContents::Replace(const std::u16string& word) {
   web_contents()->Replace(word);
 }
 
-void WebContents::ReplaceMisspelling(const base::string16& word) {
+void WebContents::ReplaceMisspelling(const std::u16string& word) {
   web_contents()->ReplaceMisspelling(word);
 }
 
 uint32_t WebContents::FindInPage(gin::Arguments* args) {
-  base::string16 search_text;
+  std::u16string search_text;
   if (!args->GetNext(&search_text) || search_text.empty()) {
     gin_helper::ErrorThrower(args->isolate())
         .ThrowError("Must provide a non-empty search content");
@@ -2819,6 +2826,18 @@ v8::Local<v8::Promise> WebContents::CapturePage(gin::Arguments* args) {
     return handle;
   }
 
+#if !defined(OS_MAC)
+  // If the view's renderer is suspended this may fail on Windows/Linux -
+  // bail if so. See CopyFromSurface in
+  // content/public/browser/render_widget_host_view.h.
+  auto* rfh = web_contents()->GetMainFrame();
+  if (rfh &&
+      rfh->GetVisibilityState() == blink::mojom::PageVisibilityState::kHidden) {
+    promise.Resolve(gfx::Image());
+    return handle;
+  }
+#endif  // defined(OS_MAC)
+
   // Capture full page if user doesn't specify a |rect|.
   const gfx::Size view_size =
       rect.IsEmpty() ? view->GetViewBounds().size() : rect.size();
@@ -2842,22 +2861,29 @@ v8::Local<v8::Promise> WebContents::CapturePage(gin::Arguments* args) {
 void WebContents::IncrementCapturerCount(gin::Arguments* args) {
   gfx::Size size;
   bool stay_hidden = false;
+  bool stay_awake = false;
 
   // get size arguments if they exist
   args->GetNext(&size);
   // get stayHidden arguments if they exist
   args->GetNext(&stay_hidden);
+  // get stayAwake arguments if they exist
+  args->GetNext(&stay_awake);
 
-  web_contents()->IncrementCapturerCount(size, stay_hidden);
+  ignore_result(
+      web_contents()->IncrementCapturerCount(size, stay_hidden, stay_awake));
 }
 
 void WebContents::DecrementCapturerCount(gin::Arguments* args) {
   bool stay_hidden = false;
+  bool stay_awake = false;
 
   // get stayHidden arguments if they exist
   args->GetNext(&stay_hidden);
+  // get stayAwake arguments if they exist
+  args->GetNext(&stay_awake);
 
-  web_contents()->DecrementCapturerCount(stay_hidden);
+  web_contents()->DecrementCapturerCount(stay_hidden, stay_awake);
 }
 
 bool WebContents::IsBeingCaptured() {
@@ -2885,6 +2911,7 @@ bool WebContents::IsGuest() const {
 
 void WebContents::AttachToIframe(content::WebContents* embedder_web_contents,
                                  int embedder_frame_id) {
+  attached_ = true;
   if (guest_delegate_)
     guest_delegate_->AttachToIframe(embedder_web_contents, embedder_frame_id);
 }
@@ -3537,17 +3564,11 @@ v8::Local<v8::ObjectTemplate> WebContents::FillObjectTemplate(
       gin::CreateFunctionTemplate(
           isolate, base::BindRepeating(&gin_helper::Destroyable::IsDestroyed),
           options));
-  templ->Set(
-      gin::StringToSymbol(isolate, "destroy"),
-      gin::CreateFunctionTemplate(
-          isolate, base::BindRepeating([](gin::Handle<WebContents> handle) {
-            delete handle.get();
-          }),
-          options));
   // We use gin_helper::ObjectTemplateBuilder instead of
   // gin::ObjectTemplateBuilder here to handle the fact that WebContents is
   // destroyable.
   return gin_helper::ObjectTemplateBuilder(isolate, templ)
+      .SetMethod("destroy", &WebContents::Destroy)
       .SetMethod("getBackgroundThrottling",
                  &WebContents::GetBackgroundThrottling)
       .SetMethod("setBackgroundThrottling",
@@ -3556,16 +3577,26 @@ v8::Local<v8::ObjectTemplate> WebContents::FillObjectTemplate(
       .SetMethod("getOSProcessId", &WebContents::GetOSProcessID)
       .SetMethod("equal", &WebContents::Equal)
       .SetMethod("_loadURL", &WebContents::LoadURL)
+      .SetMethod("reload", &WebContents::Reload)
+      .SetMethod("reloadIgnoringCache", &WebContents::ReloadIgnoringCache)
       .SetMethod("downloadURL", &WebContents::DownloadURL)
-      .SetMethod("_getURL", &WebContents::GetURL)
+      .SetMethod("getURL", &WebContents::GetURL)
       .SetMethod("getTitle", &WebContents::GetTitle)
       .SetMethod("isLoading", &WebContents::IsLoading)
       .SetMethod("isLoadingMainFrame", &WebContents::IsLoadingMainFrame)
       .SetMethod("isWaitingForResponse", &WebContents::IsWaitingForResponse)
-      .SetMethod("_stop", &WebContents::Stop)
-      .SetMethod("_goBack", &WebContents::GoBack)
-      .SetMethod("_goForward", &WebContents::GoForward)
-      .SetMethod("_goToOffset", &WebContents::GoToOffset)
+      .SetMethod("stop", &WebContents::Stop)
+      .SetMethod("canGoBack", &WebContents::CanGoBack)
+      .SetMethod("goBack", &WebContents::GoBack)
+      .SetMethod("canGoForward", &WebContents::CanGoForward)
+      .SetMethod("goForward", &WebContents::GoForward)
+      .SetMethod("canGoToOffset", &WebContents::CanGoToOffset)
+      .SetMethod("goToOffset", &WebContents::GoToOffset)
+      .SetMethod("canGoToIndex", &WebContents::CanGoToIndex)
+      .SetMethod("goToIndex", &WebContents::GoToIndex)
+      .SetMethod("getActiveIndex", &WebContents::GetActiveIndex)
+      .SetMethod("clearHistory", &WebContents::ClearHistory)
+      .SetMethod("length", &WebContents::GetHistoryLength)
       .SetMethod("isCrashed", &WebContents::IsCrashed)
       .SetMethod("forcefullyCrashRenderer",
                  &WebContents::ForcefullyCrashRenderer)

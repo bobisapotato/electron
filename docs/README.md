@@ -68,6 +68,7 @@ an issue:
   * [Testing on Headless CI Systems (Travis, Jenkins)](tutorial/testing-on-headless-ci.md)
   * [DevTools Extension](tutorial/devtools-extension.md)
   * [Automated Testing with a Custom Driver](tutorial/automated-testing-with-a-custom-driver.md)
+  * [REPL](tutorial/repl.md)
 * [Distribution](tutorial/application-distribution.md)
   * [Supported Platforms](tutorial/support.md#supported-platforms)
   * [Code Signing](tutorial/code-signing.md)
@@ -126,6 +127,8 @@ These individual tutorials expand on topics discussed in the guide above.
 * [ipcMain](api/ipc-main.md)
 * [Menu](api/menu.md)
 * [MenuItem](api/menu-item.md)
+* [MessageChannelMain](api/message-channel-main.md)
+* [MessagePortMain](api/message-port-main.md)
 * [net](api/net.md)
 * [netLog](api/net-log.md)
 * [nativeTheme](api/native-theme.md)
@@ -135,6 +138,7 @@ These individual tutorials expand on topics discussed in the guide above.
 * [protocol](api/protocol.md)
 * [screen](api/screen.md)
 * [session](api/session.md)
+* [ShareMenu](api/share-menu.md)
 * [systemPreferences](api/system-preferences.md)
 * [TouchBar](api/touch-bar.md)
 * [Tray](api/tray.md)
@@ -144,15 +148,14 @@ These individual tutorials expand on topics discussed in the guide above.
 ### Modules for the Renderer Process (Web Page):
 
 * [contextBridge](api/context-bridge.md)
-* [desktopCapturer](api/desktop-capturer.md)
 * [ipcRenderer](api/ipc-renderer.md)
-* [remote](api/remote.md)
 * [webFrame](api/web-frame.md)
 
 ### Modules for Both Processes:
 
 * [clipboard](api/clipboard.md)
 * [crashReporter](api/crash-reporter.md)
+* [desktopCapturer](api/desktop-capturer.md)
 * [nativeImage](api/native-image.md)
 * [shell](api/shell.md)
 

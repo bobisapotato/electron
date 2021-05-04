@@ -92,6 +92,7 @@ class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
   // Public APIs of NativeWindow.
   void SetContentView(gin::Handle<View> view);
   void Close();
+  virtual void CloseImmediately();
   virtual void Focus();
   virtual void Blur();
   bool IsFocused();
@@ -170,6 +171,7 @@ class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
   void SetIgnoreMouseEvents(bool ignore, gin_helper::Arguments* args);
   void SetContentProtection(bool enable);
   void SetFocusable(bool focusable);
+  bool IsFocusable();
   void SetMenu(v8::Isolate* isolate, v8::Local<v8::Value> menu);
   void RemoveMenu();
   void SetParentWindow(v8::Local<v8::Value> value, gin_helper::Arguments* args);

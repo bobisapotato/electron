@@ -243,8 +243,7 @@ class BrowserWindowProxy {
 }
 
 export const windowSetup = (
-  guestInstanceId: number, openerId: number, isHiddenPage: boolean, usesNativeWindowOpen: boolean, rendererProcessReuseEnabled: boolean
-) => {
+  guestInstanceId: number, openerId: number, isHiddenPage: boolean, usesNativeWindowOpen: boolean) => {
   if (!process.sandboxed && guestInstanceId == null) {
     // Override default window.close.
     window.close = function () {
@@ -270,7 +269,24 @@ export const windowSetup = (
     if (contextIsolationEnabled) internalContextBridge.overrideGlobalValueWithDynamicPropsFromIsolatedWorld(['open'], window.open);
   }
 
-  if (openerId != null) {
+  // If this window uses nativeWindowOpen, but its opener window does not, we
+  // need to proxy window.opener in order to let the page communicate with its
+  // opener.
+  // Additionally, windows opened from a nativeWindowOpen child of a
+  // non-nativeWindowOpen parent will initially have their WebPreferences
+  // copied from their opener before having them updated, meaning openerId is
+  // initially incorrect. We detect this situation by checking for
+  // window.opener, which will be non-null for a natively-opened child, so we
+  // can ignore the openerId in that case, since it's incorrectly copied from
+  // the parent. This is, uh, confusing, so here's a diagram that will maybe
+  // help?
+  //
+  // [ grandparent window ] --> [ parent window ] --> [ child window ]
+  //     n.W.O = false             n.W.O = true         n.W.O = true
+  //        id = 1                    id = 2               id = 3
+  //  openerId = null           openerId = 1         openerId = 1  <- !!wrong!!
+  //    opener = null             opener = null        opener = [parent window]
+  if (openerId != null && !window.opener) {
     window.opener = getOrCreateProxy(openerId);
     if (contextIsolationEnabled) internalContextBridge.overrideGlobalValueWithDynamicPropsFromIsolatedWorld(['opener'], window.opener);
   }
@@ -300,30 +316,6 @@ export const windowSetup = (
 
       window.dispatchEvent(event as MessageEvent);
     });
-  }
-
-  if (!process.sandboxed && !rendererProcessReuseEnabled) {
-    window.history.back = function () {
-      ipcRendererInternal.send(IPC_MESSAGES.NAVIGATION_CONTROLLER_GO_BACK);
-    };
-    if (contextIsolationEnabled) internalContextBridge.overrideGlobalValueFromIsolatedWorld(['history', 'back'], window.history.back);
-
-    window.history.forward = function () {
-      ipcRendererInternal.send(IPC_MESSAGES.NAVIGATION_CONTROLLER_GO_FORWARD);
-    };
-    if (contextIsolationEnabled) internalContextBridge.overrideGlobalValueFromIsolatedWorld(['history', 'forward'], window.history.forward);
-
-    window.history.go = function (offset: number) {
-      ipcRendererInternal.send(IPC_MESSAGES.NAVIGATION_CONTROLLER_GO_TO_OFFSET, +offset);
-    };
-    if (contextIsolationEnabled) internalContextBridge.overrideGlobalValueFromIsolatedWorld(['history', 'go'], window.history.go);
-
-    const getHistoryLength = () => ipcRendererInternal.sendSync(IPC_MESSAGES.NAVIGATION_CONTROLLER_LENGTH);
-    Object.defineProperty(window.history, 'length', {
-      get: getHistoryLength,
-      set () {}
-    });
-    if (contextIsolationEnabled) internalContextBridge.overrideGlobalPropertyFromIsolatedWorld(['history', 'length'], getHistoryLength);
   }
 
   if (guestInstanceId != null) {

@@ -168,7 +168,6 @@ const attachGuest = function (event: Electron.IpcMainInvokeEvent,
     guestInstanceId: guestInstanceId,
     nodeIntegration: params.nodeintegration != null ? params.nodeintegration : false,
     nodeIntegrationInSubFrames: params.nodeintegrationinsubframes != null ? params.nodeintegrationinsubframes : false,
-    enableRemoteModule: params.enableremotemodule,
     plugins: params.plugins,
     zoomFactor: embedder.zoomFactor,
     disablePopups: !params.allowpopups,
@@ -188,7 +187,6 @@ const attachGuest = function (event: Electron.IpcMainInvokeEvent,
     ['javascript', false],
     ['nativeWindowOpen', true],
     ['nodeIntegration', false],
-    ['enableRemoteModule', false],
     ['sandbox', true],
     ['nodeIntegrationInSubFrames', false],
     ['enableWebSQL', false]
@@ -218,7 +216,7 @@ const attachGuest = function (event: Electron.IpcMainInvokeEvent,
 
   watchEmbedder(embedder);
 
-  webViewManager.addGuest(guestInstanceId, elementInstanceId, embedder, guest, webPreferences);
+  webViewManager.addGuest(guestInstanceId, embedder, guest, webPreferences);
   guest.attachToIframe(embedder, embedderFrameId);
 };
 

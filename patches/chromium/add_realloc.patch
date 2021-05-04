@@ -27,10 +27,10 @@ index 210760801f1d027196111631d34bab3eb5a10792..cdfdf91841b5f2feb248b0c5890ddcfd
    free(data);
  }
 diff --git a/gin/array_buffer.h b/gin/array_buffer.h
-index 086371af29bd8c7520485125deddca411e8b978b..2c6886ddcc47019be4d552d4fddfc1c3d00cbca0 100644
+index aef43319737398848dc40a3ab2d9e959ebb399f6..3c6dbc1ec10666b35d68e107a7a694c59c78a59f 100644
 --- a/gin/array_buffer.h
 +++ b/gin/array_buffer.h
-@@ -21,6 +21,7 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
+@@ -20,6 +20,7 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
   public:
    void* Allocate(size_t length) override;
    void* AllocateUninitialized(size_t length) override;
@@ -39,10 +39,10 @@ index 086371af29bd8c7520485125deddca411e8b978b..2c6886ddcc47019be4d552d4fddfc1c3
  
    GIN_EXPORT static ArrayBufferAllocator* SharedInstance();
 diff --git a/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc b/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc
-index 056108a5a6f795d3971e1e808bbefe1058e3c512..50965d4f30b6ae233dab18d0a86f520bf1df8b10 100644
+index 54c0c689bcf1f68ebc11fc76f73d36c2439c7a0d..04fc1864937150f19945ec06a28f0601be286d0d 100644
 --- a/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc
 +++ b/third_party/blink/renderer/bindings/core/v8/v8_initializer.cc
-@@ -704,6 +704,10 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
+@@ -698,6 +698,10 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
      return result;
    }
  
@@ -54,10 +54,10 @@ index 056108a5a6f795d3971e1e808bbefe1058e3c512..50965d4f30b6ae233dab18d0a86f520b
      if (max_allocation_ != 0 && data)
        total_allocation_.fetch_sub(size, std::memory_order_relaxed);
 diff --git a/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.cc b/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.cc
-index 686806bcafa0939d29bbc6775748a115130feb96..20f7a9a594cf379b2dac6970bc8c02aebc3be360 100644
+index dd90a1e579578e6bfc7419634d8c5fecb32cd167..1881ec0194ef0f33a011109ba7870d7993fe4c27 100644
 --- a/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.cc
 +++ b/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.cc
-@@ -127,6 +127,11 @@ void* ArrayBufferContents::AllocateMemoryOrNull(size_t size,
+@@ -148,6 +148,11 @@ void* ArrayBufferContents::AllocateMemoryOrNull(size_t size,
    return AllocateMemoryWithFlags(size, policy, base::PartitionAllocReturnNull);
  }
  
@@ -70,10 +70,10 @@ index 686806bcafa0939d29bbc6775748a115130feb96..20f7a9a594cf379b2dac6970bc8c02ae
    InstanceCounters::DecrementCounter(
        InstanceCounters::kArrayBufferContentsCounter);
 diff --git a/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h b/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h
-index cce802e4fc94c258607bc943d9902e6d18173c44..4f7f4eaf005aac701360e567e6faca7f2e0ff3da 100644
+index fcf19e6685686c1c4a40dea4869beccab9de9c03..8aeb0f8db579aa8100a01dedee66f778735e2a9c 100644
 --- a/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h
 +++ b/third_party/blink/renderer/core/typed_arrays/array_buffer/array_buffer_contents.h
-@@ -108,6 +108,7 @@ class CORE_EXPORT ArrayBufferContents {
+@@ -107,6 +107,7 @@ class CORE_EXPORT ArrayBufferContents {
    void CopyTo(ArrayBufferContents& other);
  
    static void* AllocateMemoryOrNull(size_t, InitializationPolicy);
