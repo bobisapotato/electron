@@ -273,7 +273,8 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
                    round((NSHeight(main_screen_rect) - height) / 2), width,
                    height);
 
-  options.Get(options::kResizable, &resizable_);
+  bool resizable = true;
+  options.Get(options::kResizable, &resizable);
   options.Get(options::kTitleBarStyle, &title_bar_style_);
   options.Get(options::kZoomToPageWidth, &zoom_to_page_width_);
   options.Get(options::kSimpleFullScreen, &always_simple_fullscreen_);
@@ -328,7 +329,7 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
     styleMask |= NSMiniaturizableWindowMask;
   if (closable)
     styleMask |= NSWindowStyleMaskClosable;
-  if (resizable_)
+  if (resizable)
     styleMask |= NSResizableWindowMask;
   if (!useStandardWindow || transparent() || !has_frame())
     styleMask |= NSTexturedBackgroundWindowMask;
@@ -342,6 +343,7 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
   params.type = views::Widget::InitParams::TYPE_WINDOW;
   params.native_widget = new ElectronNativeWidgetMac(this, styleMask, widget());
   widget()->Init(std::move(params));
+  SetCanResize(resizable);
   window_ = static_cast<ElectronNSWindow*>(
       widget()->GetNativeWindow().GetNativeNSWindow());
 
@@ -448,7 +450,7 @@ NativeWindowMac::NativeWindowMac(const gin_helper::Dictionary& options,
   original_level_ = [window_ level];
 }
 
-NativeWindowMac::~NativeWindowMac() {}
+NativeWindowMac::~NativeWindowMac() = default;
 
 void NativeWindowMac::SetContentView(views::View* view) {
   views::View* root_view = GetContentsView();
@@ -458,11 +460,8 @@ void NativeWindowMac::SetContentView(views::View* view) {
   set_content_view(view);
   root_view->AddChildView(content_view());
 
-  if (buttons_view_) {
-    // Ensure the buttons view are always floated on the top.
-    [buttons_view_ removeFromSuperview];
-    [[window_ contentView] addSubview:buttons_view_];
-  }
+  if (buttons_view_)
+    ReorderButtonsView();
 
   root_view->Layout();
 }
@@ -780,6 +779,7 @@ void NativeWindowMac::MoveTop() {
 
 void NativeWindowMac::SetResizable(bool resizable) {
   SetStyleMask(resizable, NSWindowStyleMaskResizable);
+  SetCanResize(resizable);
 }
 
 bool NativeWindowMac::IsResizable() {
@@ -1147,6 +1147,8 @@ void NativeWindowMac::AddBrowserView(NativeBrowserView* view) {
   }
 
   [CATransaction commit];
+
+  ReorderButtonsView();
 }
 
 void NativeWindowMac::RemoveBrowserView(NativeBrowserView* view) {
@@ -1188,6 +1190,8 @@ void NativeWindowMac::SetTopBrowserView(NativeBrowserView* view) {
   }
 
   [CATransaction commit];
+
+  ReorderButtonsView();
 }
 
 void NativeWindowMac::SetParentWindow(NativeWindow* parent) {
@@ -1303,59 +1307,23 @@ void NativeWindowMac::SetAutoHideCursor(bool auto_hide) {
   [window_ setDisableAutoHideCursor:!auto_hide];
 }
 
-void NativeWindowMac::SetVibrancy(const std::string& type) {
-  NSView* vibrant_view = [window_ vibrantView];
+void NativeWindowMac::UpdateVibrancyRadii(bool fullscreen) {
+  NSVisualEffectView* vibrantView = [window_ vibrantView];
 
-  if (type.empty()) {
-    if (background_color_before_vibrancy_) {
-      [window_ setBackgroundColor:background_color_before_vibrancy_];
-      [window_ setTitlebarAppearsTransparent:transparency_before_vibrancy_];
-    }
-    if (vibrant_view == nil)
-      return;
-
-    [vibrant_view removeFromSuperview];
-    [window_ setVibrantView:nil];
-
-    return;
-  }
-
-  background_color_before_vibrancy_.reset([[window_ backgroundColor] retain]);
-  transparency_before_vibrancy_ = [window_ titlebarAppearsTransparent];
-
-  if (title_bar_style_ != TitleBarStyle::kNormal) {
-    [window_ setTitlebarAppearsTransparent:YES];
-    [window_ setBackgroundColor:[NSColor clearColor]];
-  }
-
-  NSVisualEffectView* effect_view = (NSVisualEffectView*)vibrant_view;
-  if (effect_view == nil) {
-    effect_view = [[[NSVisualEffectView alloc]
-        initWithFrame:[[window_ contentView] bounds]] autorelease];
-    [window_ setVibrantView:(NSView*)effect_view];
-
-    [effect_view setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    [effect_view setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
-
-    if (visual_effect_state_ == VisualEffectState::kActive) {
-      [effect_view setState:NSVisualEffectStateActive];
-    } else if (visual_effect_state_ == VisualEffectState::kInactive) {
-      [effect_view setState:NSVisualEffectStateInactive];
-    } else {
-      [effect_view setState:NSVisualEffectStateFollowsWindowActiveState];
-    }
-
-    // Make Vibrant view have rounded corners, so the frameless window can keep
-    // its rounded corners.
+  if (vibrantView != nil && !vibrancy_type_.empty()) {
     const bool no_rounded_corner =
         [window_ styleMask] & NSWindowStyleMaskFullSizeContentView;
     if (!has_frame() && !is_modal() && !no_rounded_corner) {
       CGFloat radius;
-      if (@available(macOS 11.0, *)) {
+      if (fullscreen) {
+        radius = 0.0f;
+      } else if (@available(macOS 11.0, *)) {
         radius = 9.0f;
       } else {
-        radius = 5.0f;  // smaller corner radius on older versions
+        // Smaller corner radius on versions prior to Big Sur.
+        radius = 5.0f;
       }
+
       CGFloat dimension = 2 * radius + 1;
       NSSize size = NSMakeSize(dimension, dimension);
       NSImage* maskImage = [NSImage imageWithSize:size
@@ -1369,23 +1337,56 @@ void NativeWindowMac::SetVibrancy(const std::string& type) {
                                      [bezierPath fill];
                                      return YES;
                                    }];
+
       [maskImage setCapInsets:NSEdgeInsetsMake(radius, radius, radius, radius)];
       [maskImage setResizingMode:NSImageResizingModeStretch];
+      [vibrantView setMaskImage:maskImage];
+      [window_ setCornerMask:maskImage];
+    }
+  }
+}
 
-      [effect_view setMaskImage:maskImage];
+void NativeWindowMac::SetVibrancy(const std::string& type) {
+  NSVisualEffectView* vibrantView = [window_ vibrantView];
+
+  if (type.empty()) {
+    if (vibrantView == nil)
+      return;
+
+    [vibrantView removeFromSuperview];
+    [window_ setVibrantView:nil];
+
+    return;
+  }
+
+  if (vibrantView == nil) {
+    vibrantView = [[[NSVisualEffectView alloc]
+        initWithFrame:[[window_ contentView] bounds]] autorelease];
+    [window_ setVibrantView:vibrantView];
+
+    [vibrantView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [vibrantView setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
+
+    if (visual_effect_state_ == VisualEffectState::kActive) {
+      [vibrantView setState:NSVisualEffectStateActive];
+    } else if (visual_effect_state_ == VisualEffectState::kInactive) {
+      [vibrantView setState:NSVisualEffectStateInactive];
+    } else {
+      [vibrantView setState:NSVisualEffectStateFollowsWindowActiveState];
     }
 
-    [[window_ contentView] addSubview:effect_view
+    [[window_ contentView] addSubview:vibrantView
                            positioned:NSWindowBelow
                            relativeTo:nil];
+
+    UpdateVibrancyRadii(IsFullscreen());
   }
 
   std::string dep_warn = " has been deprecated and removed as of macOS 10.15.";
   node::Environment* env =
       node::Environment::GetCurrent(JavascriptEnvironment::GetIsolate());
 
-  NSVisualEffectMaterial vibrancyType;
-
+  NSVisualEffectMaterial vibrancyType{};
   if (type == "appearance-based") {
     EmitWarning(env, "NSVisualEffectMaterialAppearanceBased" + dep_warn,
                 "electron");
@@ -1442,8 +1443,10 @@ void NativeWindowMac::SetVibrancy(const std::string& type) {
     }
   }
 
-  if (vibrancyType)
-    [effect_view setMaterial:vibrancyType];
+  if (vibrancyType) {
+    vibrancy_type_ = type;
+    [vibrantView setMaterial:vibrancyType];
+  }
 }
 
 void NativeWindowMac::SetWindowButtonVisibility(bool visible) {
@@ -1461,15 +1464,15 @@ bool NativeWindowMac::GetWindowButtonVisibility() const {
 }
 
 void NativeWindowMac::SetTrafficLightPosition(
-    base::Optional<gfx::Point> position) {
+    absl::optional<gfx::Point> position) {
   traffic_light_position_ = std::move(position);
   if (buttons_view_) {
-    [buttons_view_ setMargin:position];
+    [buttons_view_ setMargin:traffic_light_position_];
     [buttons_view_ viewDidMoveToWindow];
   }
 }
 
-base::Optional<gfx::Point> NativeWindowMac::GetTrafficLightPosition() const {
+absl::optional<gfx::Point> NativeWindowMac::GetTrafficLightPosition() const {
   return traffic_light_position_;
 }
 
@@ -1623,6 +1626,8 @@ void NativeWindowMac::NotifyWindowWillEnterFullScreen() {
     [buttons_view_ removeFromSuperview];
     InternalSetStandardButtonsVisibility(true);
   }
+
+  UpdateVibrancyRadii(true);
 }
 
 void NativeWindowMac::NotifyWindowWillLeaveFullScreen() {
@@ -1634,6 +1639,24 @@ void NativeWindowMac::NotifyWindowWillLeaveFullScreen() {
   }
 
   RedrawTrafficLights();
+  UpdateVibrancyRadii(false);
+}
+
+void NativeWindowMac::SetActive(bool is_key) {
+  if (is_key)
+    widget()->Activate();
+  is_active_ = is_key;
+}
+
+bool NativeWindowMac::IsActive() const {
+  return is_active_;
+}
+
+void NativeWindowMac::ReorderButtonsView() {
+  if (buttons_view_) {
+    [buttons_view_ removeFromSuperview];
+    [[window_ contentView] addSubview:buttons_view_];
+  }
 }
 
 void NativeWindowMac::Cleanup() {
@@ -1685,10 +1708,6 @@ void NativeWindowMac::SetCollectionBehavior(bool on, NSUInteger flag) {
   // Change collectionBehavior will make the zoom button revert to default,
   // probably a bug of Cocoa or macOS.
   SetMaximizable(was_maximizable);
-}
-
-bool NativeWindowMac::CanResize() const {
-  return resizable_;
 }
 
 views::View* NativeWindowMac::GetContentsView() {

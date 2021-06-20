@@ -406,8 +406,7 @@ describe('BrowserWindow module', () => {
       await expect(p).to.eventually.be.fulfilled;
     });
 
-    // FIXME(robo/nornagon): re-enable these once service workers work
-    describe.skip('POST navigations', () => {
+    describe('POST navigations', () => {
       afterEach(() => { w.webContents.session.webRequest.onBeforeSendHeaders(null); });
 
       it('supports specifying POST data', async () => {
@@ -772,8 +771,10 @@ describe('BrowserWindow module', () => {
         expect(otherWindow.isFocused()).to.equal(true);
 
         const wFocused = emittedOnce(w, 'focus');
+        const otherWindowBlurred = emittedOnce(otherWindow, 'blur');
         w.focus();
         await wFocused;
+        await otherWindowBlurred;
         expect(w.isFocused()).to.equal(true);
 
         otherWindow.moveTop();
@@ -1606,6 +1607,13 @@ describe('BrowserWindow module', () => {
         w.setVibrancy(null);
         w.setVibrancy('ultra-dark');
         w.setVibrancy('' as any);
+      }).to.not.throw();
+    });
+
+    it('does not crash if vibrancy is set to an invalid value', () => {
+      const w = new BrowserWindow({ show: false });
+      expect(() => {
+        w.setVibrancy('i-am-not-a-valid-vibrancy-type' as any);
       }).to.not.throw();
     });
   });
